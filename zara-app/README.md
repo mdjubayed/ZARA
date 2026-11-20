@@ -106,7 +106,7 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 - User-managed persistent memory notes stored in the ZARA settings database and included as bounded context in later chats.
 - Reusable agent instruction templates. These prepare prompts only and do not run autonomous background actions.
 - Safe prompt tools for learning, writing, coding, and research planning.
-- Explicit text-file attachments in chat, read in the browser and limited to 500 KB per file.
+- Explicit text-file attachments in chat, read in the browser and limited to 80 KB per file.
 - Browser-based workspace access after the user explicitly chooses a folder: list up to 200 files across three folder levels, open supported text/source files up to 500 KB, and save edits only after confirmation. No file deletion or command execution.
 - Conversation rename and deletion, with a confirmation step before deletion.
 
