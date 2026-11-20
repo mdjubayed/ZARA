@@ -195,6 +195,8 @@ export default function App() {
     const content = text.trim();
     if (!content) return;
     window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+    setIsSpeaking(false);
     setSpeechError('');
     const utterance = new SpeechSynthesisUtterance(content);
     utterance.lang = voiceLanguage;
@@ -681,7 +683,7 @@ export default function App() {
             <p>Speak in Bengali or English. Your browser converts speech to text and sends the transcript to the selected ZARA Brain. Browser speech recognition may use the browser provider's online service.</p>
             <div className="provider-select">
               <label htmlFor="voice-language">Language</label>
-              <select id="voice-language" value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.target.value as 'bn-BD' | 'en-US')}>
+              <select id="voice-language" value={voiceLanguage} onChange={(event) => { stopSpeaking(); setVoiceLanguage(event.target.value as 'bn-BD' | 'en-US'); }}>
                 <option value="bn-BD">বাংলা</option><option value="en-US">English</option>
               </select>
             </div>
