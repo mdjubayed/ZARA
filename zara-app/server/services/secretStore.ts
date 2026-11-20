@@ -15,11 +15,11 @@ export function getProviderApiKey(
   const envName = PROVIDER_SECRET_ENV[providerId];
   const value = process.env[envName];
 
-  if (typeof value !== 'string' || value.length === 0) {
+  if (typeof value !== 'string' || value.trim().length === 0) {
     return undefined;
   }
 
-  return value;
+  return value.trim();
 }
 
 /**
