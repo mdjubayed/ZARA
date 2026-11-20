@@ -40,7 +40,7 @@ Open the repository's Actions tab, choose **Build ZARA Windows Installer**, and 
 - The application does not grant unrestricted shell or filesystem access to the renderer.
 - The only native app launch actions currently exposed are Notepad and Calculator. Each requires a confirmation dialog; arbitrary commands and app-closing actions are not exposed.
 - The Files screen can open one user-selected UTF-8 text/source file (maximum 500 KB) and save text through a native Save As dialog. The save path is selected by the user and a separate confirmation is required before writing. File deletion, bulk access, and arbitrary filesystem traversal are not exposed.
-- Native file operations are limited to `.txt`, `.md`, `.json`, `.csv`, common source-code, markup, stylesheet, log, and YAML text formats; the app rejects binary/non-UTF-8 files.
+- Native file operations are limited to `.txt`, `.md`, `.json`, `.csv`, common source-code, markup, stylesheet, log, YAML, TOML, and SQL text formats; the app rejects binary/non-UTF-8 files and hidden or common secret/credential filenames.
 - External HTTP(S) links open in the system browser; the app window cannot navigate away from its local origin.
 - Provider keys remain blank by default and are not bundled into the installer.
 - In the packaged Windows app, users can enter keys in Brain Settings. Electron `safeStorage` encrypts them with the Windows DPAPI-backed provider before writing them to the user's application-data directory. The frontend receives only a saved/not-saved status, never the saved key.
