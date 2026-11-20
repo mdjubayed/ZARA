@@ -85,6 +85,8 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 
 ## Security notes
 
+See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deployment guidance, and limitations.
+
 - Provider keys are read from backend environment variables only.
 - Provider credentials must never be committed to Git or returned by API responses.
 - Application settings reject secret-like field names, including nested secret fields.
