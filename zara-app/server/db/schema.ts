@@ -49,20 +49,6 @@ CREATE TABLE IF NOT EXISTS chat_requests (
   FOREIGN KEY (assistant_message_id) REFERENCES messages(id) ON DELETE SET NULL
 );
 
-CREATE TABLE IF NOT EXISTS chat_requests (
-  request_id TEXT PRIMARY KEY,
-  thread_id TEXT NOT NULL,
-  user_message_id TEXT NOT NULL,
-  assistant_message_id TEXT,
-  provider_id TEXT,
-  model TEXT,
-  status TEXT NOT NULL CHECK (status IN ('running', 'completed')),
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
-  FOREIGN KEY (user_message_id) REFERENCES messages(id) ON DELETE CASCADE,
-  FOREIGN KEY (assistant_message_id) REFERENCES messages(id) ON DELETE SET NULL
-);
-
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
   message_id UNINDEXED,
   thread_id UNINDEXED,
