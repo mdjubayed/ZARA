@@ -4,6 +4,7 @@
 
 - React frontend: chat, provider selection, voice, history, search, saved memory, prompt tools, and browser-selected workspace files.
 - Optional Windows Electron shell: serves the same frontend and local Express API, with a sandboxed renderer and a narrow allowlisted native-action bridge.
+- Optional Android Capacitor shell: embeds the frontend and connects to a separately hosted HTTPS API using an owner session cookie.
 - Express API: request validation, conversation routes, provider status, settings, and SSE chat.
 - SQLite: threads, messages, provider state, settings, idempotency records, and FTS5 search.
 - Brain Manager: one orchestration layer for exactly two provider adapters.
@@ -14,7 +15,7 @@
 - Passwords use salted scrypt hashes; raw passwords are never persisted.
 - Random session tokens are delivered only through HttpOnly, SameSite=Strict cookies; SQLite stores only token hashes and expiry timestamps.
 - All application routes except health and the authentication lifecycle require an active owner session.
-- HTTPS is mandatory for any public or remote deployment. See [AUTHENTICATION.md](./AUTHENTICATION.md).
+- HTTPS is mandatory for any public or remote deployment. Android cross-origin requests use Secure, HttpOnly, SameSite=None cookies and require the exact `https://localhost` origin in the backend CORS allowlist. See [AUTHENTICATION.md](./AUTHENTICATION.md) and [MOBILE.md](./MOBILE.md).
 
 ## AI provider decision
 
