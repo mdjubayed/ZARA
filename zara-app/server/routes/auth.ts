@@ -15,6 +15,12 @@ function isRateLimited(ip: string | undefined): boolean {
   const now = Date.now();
   const key = requestKey(ip);
   const current = attempts.get(key);
+  if (attempts.size > 10000) {
+    for (const [attemptIp, entry] of attempts) {
+      if (entry.resetAt <= now) attempts.delete(attemptIp);
+    }
+    if (attempts.size > 10000) attempts.delete(attempts.keys().next().value as string);
+  }
   if (!current || current.resetAt <= now) {
     attempts.set(key, { count: 0, resetAt: now + WINDOW_MS });
     return false;
@@ -44,7 +50,7 @@ function setSessionCookie(request: import('express').Request, response: import('
 }
 function clearSessionCookie(request: import('express').Request, response: import('express').Response) {
   const options = cookieOptions(request);
-  response.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: options.secure, sameSite: 'strict', path: '/' });
+  response.clearCookie(SESSION_COOKIE, { httpOnly: true, secure: options.secure, sameSite: options.sameSite, path: '/' });
 }
 
 authRouter.get('/status', (_req, res) => {
