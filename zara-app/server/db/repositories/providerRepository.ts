@@ -1,5 +1,6 @@
 import { getDatabase } from '../database.js';
 import { hasProviderApiKey } from '../../services/secretStore.js';
+import { getProviderModel } from '../../services/providerConfig.js';
 
 export type ProviderStatus =
   | 'unconfigured'
@@ -47,11 +48,17 @@ export function getAllProviders(): Provider[] {
   const db = getDatabase();
   const syncConfiguration = db.prepare(`
     UPDATE providers
-    SET status = 'unconfigured', enabled = 0, updated_at = CURRENT_TIMESTAMP
-    WHERE id = ? AND ? = 0
+    SET status = ?, enabled = 0, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
   `);
   for (const id of ['omniroute', 'freellmapi'] as const) {
-    syncConfiguration.run(id, hasProviderApiKey(id) ? 1 : 0);
+    const status = !hasProviderApiKey(id)
+      ? 'unconfigured'
+      : !getProviderModel(id)
+        ? 'pending_verification'
+        : undefined;
+
+    if (status) syncConfiguration.run(status, id);
   }
   return db
     .prepare("SELECT * FROM providers WHERE id IN ('omniroute', 'freellmapi') ORDER BY CASE id WHEN 'omniroute' THEN 0 ELSE 1 END")
