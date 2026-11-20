@@ -534,6 +534,7 @@ export default function App() {
               <input type="checkbox" checked={autoSpeak} onChange={(event) => setAutoSpeak(event.target.checked)} /> Speak ZARA's replies aloud
             </label>
             <button onClick={voiceListening ? stopVoiceRecognition : startVoiceRecognition} disabled={busy}>{voiceListening ? 'Stop Listening' : 'Start Speaking'} <Mic size={17} /></button>
+            {busy && <button onClick={() => activeChatController.current?.abort()}>Stop ZARA response <X size={17} /></button>}
             {voiceError && <p role="alert">{voiceError}</p>}
             {voiceListening && <p>Listening… Speak now.</p>}
             <div className="voice-transcript">
