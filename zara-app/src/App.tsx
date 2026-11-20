@@ -10,7 +10,7 @@ import './App.css';
 
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
-type Provider = { id: ProviderId; name: string; status: string; enabled: number };
+type Provider = { id: ProviderId; name: string; status: string; enabled: number; model?: string };
 type Thread = { id: string; title: string; updated_at?: string };
 type SearchResult = { id: string; thread_id: string; thread_title: string; content: string; role: 'user' | 'assistant' | 'system' };
 type MemoryEntry = { id: string; content: string; createdAt: string };
@@ -69,6 +69,8 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('home');
   const [online, setOnline] = useState(false);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [providerModels, setProviderModels] = useState<Record<ProviderId, string[]>>({ omniroute: [], freellmapi: [] });
+  const [providerModelSelections, setProviderModelSelections] = useState<Record<ProviderId, string>>({ omniroute: '', freellmapi: '' });
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>('omniroute');
   const [threadId, setThreadId] = useState('');
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -99,6 +101,7 @@ export default function App() {
     try {
       const result = await api<{ providers: Provider[] }>('/providers');
       setProviders(result.providers);
+      setProviderModelSelections((current) => ({ ...current, ...Object.fromEntries(result.providers.map((provider) => [provider.id, provider.model ?? ''])) }));
     } catch {
       setProviders([]);
     }
@@ -115,7 +118,7 @@ export default function App() {
       .catch(() => { if (active) setAgentTemplates([]); });
 
     api<{ providers: Provider[] }>('/providers')
-      .then((result) => { if (active) setProviders(result.providers); })
+      .then((result) => { if (active) { setProviders(result.providers); setProviderModelSelections((current) => ({ ...current, ...Object.fromEntries(result.providers.map((provider) => [provider.id, provider.model ?? ''])) })); } })
       .catch(() => { if (active) setProviders([]); });
     api<{ threads: Thread[] }>('/threads')
       .then(async ({ threads: loadedThreads }) => {
@@ -398,11 +401,27 @@ export default function App() {
   const verifyProvider = async (id: ProviderId) => {
     setToast(`Checking ${id} connection...`);
     try {
-      const result = await api<{ modelCount: number }>(`/providers/${id}/verify`, { method: 'POST' });
+      const result = await api<{ modelCount: number; models: string[]; requiresModelSelection?: boolean }>(`/providers/${id}/verify`, { method: 'POST' });
+      setProviderModels((current) => ({ ...current, [id]: result.models }));
       await refreshProviders();
-      setToast(`${id} connected. ${result.modelCount} models found. Enable it to use it.`);
+      setToast(result.requiresModelSelection ? `${id}: choose a model from the list, save it, then verify again.` : `${id} connected. ${result.modelCount} models found. Enable it to use it.`);
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Provider verification failed');
+    }
+  };
+
+  const saveProviderModel = async (id: ProviderId) => {
+    const model = providerModelSelections[id].trim();
+    if (!model) { setToast('Select a model first.'); return; }
+    try {
+      await api('/settings/zara.provider.' + id + '.model', {
+        method: 'PATCH',
+        body: JSON.stringify({ value: model }),
+      });
+      setToast('Model saved. Verifying provider compatibility…');
+      await verifyProvider(id);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not save provider model');
     }
   };
 
@@ -488,7 +507,7 @@ export default function App() {
         )}
 
         {tab === 'settings' && (
-          <section className="settings-page"><div className="section-title"><h1>AI Brain Settings</h1><p>Configure the two approved providers. API keys are read only from backend environment variables.</p></div><div className="provider-cards">{(['omniroute', 'freellmapi'] as ProviderId[]).map((id) => { const provider = providers.find((item) => item.id === id); return <article className="provider-card" key={id}><div className="provider-card-top"><div className={`provider-symbol ${id}`}>{id === 'omniroute' ? 'O' : 'F'}</div><div><h2>{id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'}</h2><p>{id === 'omniroute' ? 'Primary AI Brain' : 'Automatic Backup Brain'}</p></div><span className={`provider-status ${provider?.status === 'ready' ? 'ready' : ''}`}>{provider?.status ?? 'not checked'}</span></div><div className="provider-meta"><span>API Key: <b>Backend environment</b></span><span>Enabled: <b>{provider?.enabled ? 'Yes' : 'No'}</b></span></div><div className="provider-buttons"><button onClick={() => void verifyProvider(id)}>Verify Connection</button><button className="secondary-button" disabled={!provider || provider.status !== 'ready'} onClick={() => provider && void toggleProvider(provider)}>{provider?.enabled ? 'Disable' : 'Enable'}</button></div></article>; })}</div><div className="notice-card"><ShieldCheck /><div><strong>Secret protection</strong><p>Never paste API keys into ChatGPT, browser console, or SQLite. Configure <code>OMNIROUTE_API_KEY</code> and <code>FREELLMAPI_API_KEY</code> in your private server environment.</p></div></div></section>
+          <section className="settings-page"><div className="section-title"><h1>AI Brain Settings</h1><p>Configure the two approved providers. API keys are read only from backend environment variables.</p></div><div className="provider-cards">{(['omniroute', 'freellmapi'] as ProviderId[]).map((id) => { const provider = providers.find((item) => item.id === id); return <article className="provider-card" key={id}><div className="provider-card-top"><div className={`provider-symbol ${id}`}>{id === 'omniroute' ? 'O' : 'F'}</div><div><h2>{id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'}</h2><p>{id === 'omniroute' ? 'Primary AI Brain' : 'Automatic Backup Brain'}</p></div><span className={`provider-status ${provider?.status === 'ready' ? 'ready' : ''}`}>{provider?.status ?? 'not checked'}</span></div><div className="provider-meta"><span>API Key: <b>Backend environment</b></span><span>Enabled: <b>{provider?.enabled ? 'Yes' : 'No'}</b></span></div><div className="provider-model-picker"><label htmlFor={id + '-model'}>Model</label><select id={id + '-model'} value={providerModelSelections[id]} onChange={(event) => setProviderModelSelections((current) => ({ ...current, [id]: event.target.value }))} disabled={providerModels[id].length === 0}><option value="">Select after verifying connection</option><option value="auto">auto (provider-selected)</option>{providerModels[id].map((model) => <option value={model} key={model}>{model}</option>)}</select><button onClick={() => void saveProviderModel(id)} disabled={!providerModelSelections[id].trim()}>Save Model</button></div><div className="provider-buttons"><button onClick={() => void verifyProvider(id)}>Verify Connection</button><button className="secondary-button" disabled={!provider || provider.status !== 'ready'} onClick={() => provider && void toggleProvider(provider)}>{provider?.enabled ? 'Disable' : 'Enable'}</button></div></article>; })}</div><div className="notice-card"><ShieldCheck /><div><strong>Secret protection</strong><p>Never paste API keys into ChatGPT, browser console, or SQLite. Configure <code>OMNIROUTE_API_KEY</code> and <code>FREELLMAPI_API_KEY</code> in your private server environment.</p></div></div></section>
         )}
 
         {tab === 'voice' && (
