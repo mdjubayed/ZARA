@@ -10,7 +10,7 @@ import './App.css';
 import { getApiBase } from './lib/apiBase.js';
 import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
 import { isSafeWorkspaceDirectory, isSafeWorkspacePath, WORKSPACE_FILE_SIZE_LIMIT } from './lib/workspacePolicy.js';
-import { buildWebSearchUrl, validateWebPageUrl } from './lib/webNavigation.js';
+import { buildWebSearchUrl, isAllowedWebSearchQuery, validateWebPageUrl } from './lib/webNavigation.js';
 
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
@@ -531,6 +531,10 @@ export default function App() {
     }
     if (query.length > 300) {
       setToast('Search text must be 300 characters or fewer.');
+      return;
+    }
+    if (!isAllowedWebSearchQuery(query)) {
+      setToast('ZARA cannot help search for content that may be unsafe or age-restricted.');
       return;
     }
     const searchUrl = buildWebSearchUrl(query);
