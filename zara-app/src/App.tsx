@@ -11,6 +11,7 @@ import { getApiBase } from './lib/apiBase.js';
 import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
 import { isSafeWorkspaceDirectory, isSafeWorkspacePath, WORKSPACE_FILE_SIZE_LIMIT } from './lib/workspacePolicy.js';
 import { buildWebSearchUrl, isAllowedWebSearchQuery, validateWebPageUrl } from './lib/webNavigation.js';
+import { isAndroidExternalBrowserAvailable, openAndroidExternalUrl } from './lib/nativeBrowser.js';
 
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
@@ -518,12 +519,21 @@ export default function App() {
       }
       return;
     }
+    if (isAndroidExternalBrowserAvailable()) {
+      try {
+        await openAndroidExternalUrl(validation.url);
+        setToast('Website opened in your Android browser.');
+      } catch {
+        setToast('Could not open the website. Check whether a browser is installed.');
+      }
+      return;
+    }
     const opened = window.open(validation.url, '_blank');
     if (opened) opened.opener = null;
     else setToast('The browser blocked the new tab. Allow pop-ups for ZARA and try again.');
   };
 
-  const searchWeb = () => {
+  const searchWeb = async () => {
     const query = browserQuery.trim();
     if (!query) {
       setToast('Enter a search topic first.');
@@ -544,6 +554,15 @@ export default function App() {
       void desktop.openExternal(searchUrl).then((result) => {
         setToast(result.ok ? 'Search opened in your default browser.' : result.error === 'CANCELLED' ? 'Search cancelled.' : 'Could not open web search.');
       }).catch(() => setToast('Could not open web search.'));
+      return;
+    }
+    if (isAndroidExternalBrowserAvailable()) {
+      try {
+        await openAndroidExternalUrl(searchUrl);
+        setToast('Search opened in your Android browser.');
+      } catch {
+        setToast('Could not open web search. Check whether a browser is installed.');
+      }
       return;
     }
     const opened = window.open(searchUrl, '_blank');
@@ -893,7 +912,7 @@ export default function App() {
             </div>
             <div className="web-browser-panel">
               <div className="web-browser-heading"><Globe size={20} /><div><h2>Web Search & Reader</h2><p>Search the public web or open a website to read in your browser.</p></div></div>
-              <form className="web-browser-form" onSubmit={(event) => { event.preventDefault(); searchWeb(); }}>
+              <form className="web-browser-form" onSubmit={(event) => { event.preventDefault(); void searchWeb(); }}>
                 <label htmlFor="zara-web-search">Search the web</label>
                 <div><input id="zara-web-search" value={browserQuery} maxLength={300} onChange={(event) => setBrowserQuery(event.target.value)} placeholder="বাংলা বা English-এ কিছু খুঁজুন…" /><button type="submit" disabled={!browserQuery.trim()}><Search size={16} /> Search</button></div>
               </form>
