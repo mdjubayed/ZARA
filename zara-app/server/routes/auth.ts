@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { clearExpiredSessions, createOwnerAndSession, getOwnerCount, loginOwner, revokeSession } from '../services/authService.js';
 import { getSessionToken, requireAuth, SESSION_COOKIE } from '../middleware/requireAuth.js';
+import { config } from '../config.js';
 
 export const authRouter = Router();
 const credentialsSchema = z.object({ password: z.string().min(12).max(128) }).strict();
@@ -29,8 +30,14 @@ function recordFailure(ip: string | undefined): void {
 function clearFailures(ip: string | undefined): void { attempts.delete(requestKey(ip)); }
 
 function cookieOptions(request: import('express').Request) {
-  const secure = request.secure || request.get('x-forwarded-proto') === 'https';
-  return { httpOnly: true, secure, sameSite: 'strict' as const, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000 };
+  const origin = request.get('origin');
+  const requestHost = request.get('host');
+  let crossOrigin = false;
+  if (config.isProduction && origin && requestHost) {
+    try { crossOrigin = new URL(origin).host !== requestHost; } catch { crossOrigin = true; }
+  }
+  const secure = request.secure || request.get('x-forwarded-proto') === 'https' || crossOrigin;
+  return { httpOnly: true, secure, sameSite: crossOrigin ? 'none' as const : 'strict' as const, path: '/', maxAge: 7 * 24 * 60 * 60 * 1000 };
 }
 function setSessionCookie(request: import('express').Request, response: import('express').Response, token: string) {
   response.cookie(SESSION_COOKIE, token, cookieOptions(request));
