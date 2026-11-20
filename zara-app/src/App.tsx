@@ -202,6 +202,7 @@ export default function App() {
       }
       if (!finished) throw new Error('STREAM_CLOSED_BEFORE_COMPLETION');
       refreshProviders();
+      api<{ threads: Thread[] }>('/threads').then((result) => setThreads(result.threads)).catch(() => undefined);
       if (speakResponse && autoSpeak && finalAssistantMessage?.content && 'speechSynthesis' in window) {
         window.speechSynthesis.cancel();
         const utterance = new SpeechSynthesisUtterance(finalAssistantMessage.content);
