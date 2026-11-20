@@ -121,7 +121,7 @@ export default function App() {
 
   useEffect(() => () => {
     recognitionRef.current?.stop();
-    void nativeSpeechSessionRef.current?.cancel();
+    void nativeSpeechSessionRef.current?.cancel().catch(() => undefined);
     nativeSpeechSessionRef.current = null;
     activeChatController.current?.abort();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
@@ -558,7 +558,12 @@ export default function App() {
   }, [sendMessage, voiceLanguage]);
   const stopVoiceRecognition = useCallback(() => {
     if (isAndroidNativeSpeechAvailable() && nativeSpeechSessionRef.current) {
-      void nativeSpeechSessionRef.current.stop().catch(() => setVoiceError('Could not stop Android voice input.'));
+      const session = nativeSpeechSessionRef.current;
+      void session.stop().catch(() => {
+        nativeSpeechSessionRef.current = null;
+        void session.cancel().catch(() => undefined);
+        setVoiceError('Could not stop Android voice input. Please try again.');
+      });
       setVoiceListening(false);
       return;
     }
