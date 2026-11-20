@@ -41,6 +41,8 @@ Open the repository's Actions tab, choose **Build ZARA Windows Installer**, and 
 - The only native app launch actions currently exposed are Notepad and Calculator. Each requires a confirmation dialog; arbitrary commands and app-closing actions are not exposed.
 - External HTTP(S) links open in the system browser; the app window cannot navigate away from its local origin.
 - Provider keys remain blank by default and are not bundled into the installer.
+- In the packaged Windows app, users can enter keys in Brain Settings. Electron `safeStorage` encrypts them with the Windows DPAPI-backed provider before writing them to the user's application-data directory. The frontend receives only a saved/not-saved status, never the saved key.
+- The secure-key UI is intentionally unavailable in the browser and in the development Electron shell; those environments continue to use private backend environment variables.
 - Do not expose the desktop app's local API port to another device or network.
 
 ## Current limitations
