@@ -38,6 +38,22 @@ Before connecting an Android APK or using ZARA outside the host computer:
 1. Configure a domain and a trusted HTTPS reverse proxy.
 2. Proxy requests to `http://127.0.0.1:3002`.
 3. Keep the backend port private; expose only the HTTPS reverse proxy.
+
+For an Nginx HTTPS virtual host, the application location should preserve the original host and HTTPS scheme and disable proxy buffering so Server-Sent Event chat tokens arrive progressively:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:3002;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_buffering off;
+    proxy_read_timeout 180s;
+}
+```
+
+Configure the TLS certificate and hostname in the HTTPS virtual host; do not serve the remote app over plain HTTP.
 4. Keep `CORS_ORIGINS=https://localhost` so the Android WebView can authenticate. Add exact trusted cross-origin web origins only when required.
 5. Keep the Docker volume `zara_data` persistent and back it up securely.
 
