@@ -58,3 +58,10 @@
 .voice-transcript article{margin:8px 0;padding:10px 13px;border:1px solid rgba(95,112,255,.3);border-radius:10px;background:rgba(9,15,48,.72)}
 .voice-transcript strong{font-size:11px;color:#9eacff}
 .voice-transcript p{margin:5px 0 0;color:#e5eaff;font-size:12px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+
+
+.provider-model-picker{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:14px 0}
+.provider-model-picker label{color:#9ba6cf;font-size:11px}
+.provider-model-picker select{min-width:0;flex:1;padding:9px 10px;border:1px solid #4848a5;border-radius:9px;background:#0b1237;color:#fff;font-size:11px}
+.provider-model-picker button{padding:9px 11px;border:1px solid #6255ed;border-radius:9px;background:#21175b;color:#fff;font-size:11px}
+.provider-model-picker button:disabled{opacity:.4;cursor:not-allowed}
