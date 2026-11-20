@@ -110,6 +110,10 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 - Browser-based workspace access after the user explicitly chooses a folder: list up to 200 files across three folder levels, open supported text/source files up to 500 KB, and save edits only after confirmation. No file deletion or command execution.
 - Conversation rename and deletion, with a confirmation step before deletion.
 
+## Installing the web app
+
+Deploy the frontend over HTTPS, open ZARA in a compatible browser, and use the browser's **Install app** option (Chrome/Edge desktop or Android Chrome). The app shell can load from cache after a visit, but chat, saved data, and provider calls still require the backend and provider services to be reachable.
+
 ## Remaining platform boundaries
 
 - Browser voice recognition availability and language quality depend on the browser and operating system. Speech recognition may require browser permission and an internet connection; the browser provider may process voice input through its own online service.
