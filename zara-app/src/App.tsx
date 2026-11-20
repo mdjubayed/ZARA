@@ -71,6 +71,9 @@ export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [providerModels, setProviderModels] = useState<Record<ProviderId, string[]>>({ omniroute: [], freellmapi: [] });
   const [providerModelSelections, setProviderModelSelections] = useState<Record<ProviderId, string>>({ omniroute: '', freellmapi: '' });
+  const [providerKeyDrafts, setProviderKeyDrafts] = useState<Record<ProviderId, string>>({ omniroute: '', freellmapi: '' });
+  const [providerKeyStored, setProviderKeyStored] = useState<Record<ProviderId, boolean>>({ omniroute: false, freellmapi: false });
+  const [secureKeyStorageAvailable, setSecureKeyStorageAvailable] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>('omniroute');
   const [threadId, setThreadId] = useState('');
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -112,6 +115,20 @@ export default function App() {
     recognitionRef.current?.stop();
     activeChatController.current?.abort();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const desktop = window.zaraDesktop;
+    if (!desktop?.isDesktop) return () => { active = false; };
+    void desktop.getProviderKeyStatus().then((status) => {
+      if (!active) return;
+      setSecureKeyStorageAvailable(status.available);
+      setProviderKeyStored({ omniroute: status.omniroute, freellmapi: status.freellmapi });
+    }).catch(() => {
+      if (active) setSecureKeyStorageAvailable(false);
+    });
+    return () => { active = false; };
   }, []);
 
   useEffect(() => {
@@ -460,6 +477,45 @@ export default function App() {
     }
   };
 
+  const saveProviderKey = async (id: ProviderId) => {
+    const key = providerKeyDrafts[id].trim();
+    const desktop = window.zaraDesktop;
+    if (!desktop || !secureKeyStorageAvailable || !key) return;
+    if (!window.confirm(`Save the ${id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'} key in Windows encrypted storage?`)) return;
+    try {
+      const result = await desktop.saveProviderKey(id, key);
+      if (!result.ok) {
+        setToast('The key could not be stored securely. No key was saved.');
+        return;
+      }
+      setProviderKeyDrafts((current) => ({ ...current, [id]: '' }));
+      setProviderKeyStored((current) => ({ ...current, [id]: true }));
+      setToast('API key saved using Windows secure storage. Verify the provider next.');
+      await refreshProviders();
+    } catch {
+      setToast('Secure API key storage failed. No key was saved.');
+    }
+  };
+
+  const clearProviderKey = async (id: ProviderId) => {
+    const desktop = window.zaraDesktop;
+    if (!desktop || !secureKeyStorageAvailable) return;
+    if (!window.confirm(`Remove the saved ${id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'} key from this Windows account?`)) return;
+    try {
+      const result = await desktop.clearProviderKey(id);
+      if (!result.ok) {
+        setToast('The saved key could not be removed.');
+        return;
+      }
+      setProviderKeyStored((current) => ({ ...current, [id]: false }));
+      setProviderKeyDrafts((current) => ({ ...current, [id]: '' }));
+      setToast('Saved API key removed.');
+      await refreshProviders();
+    } catch {
+      setToast('Could not remove the saved API key.');
+    }
+  };
+
   const saveProviderModel = async (id: ProviderId) => {
     const model = providerModelSelections[id].trim();
     if (!model) { setToast('Select a model first.'); return; }
@@ -557,7 +613,7 @@ export default function App() {
         )}
 
         {tab === 'settings' && (
-          <section className="settings-page"><div className="section-title"><h1>AI Brain Settings</h1><p>Configure the two approved providers. API keys are read only from backend environment variables.</p></div><div className="provider-cards">{(['omniroute', 'freellmapi'] as ProviderId[]).map((id) => { const provider = providers.find((item) => item.id === id); return <article className="provider-card" key={id}><div className="provider-card-top"><div className={`provider-symbol ${id}`}>{id === 'omniroute' ? 'O' : 'F'}</div><div><h2>{id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'}</h2><p>{id === 'omniroute' ? 'Primary AI Brain' : 'Automatic Backup Brain'}</p></div><span className={`provider-status ${provider?.status === 'ready' ? 'ready' : ''}`}>{provider?.status ?? 'not checked'}</span></div><div className="provider-meta"><span>API Key: <b>Backend environment</b></span><span>Enabled: <b>{provider?.enabled ? 'Yes' : 'No'}</b></span></div><div className="provider-model-picker"><label htmlFor={id + '-model'}>Model</label><select id={id + '-model'} value={providerModelSelections[id]} onChange={(event) => setProviderModelSelections((current) => ({ ...current, [id]: event.target.value }))} disabled={providerModels[id].length === 0}><option value="">Select after verifying connection</option><option value="auto">auto (provider-selected)</option>{providerModels[id].filter((model) => model !== 'auto').map((model) => <option value={model} key={model}>{model}</option>)}</select><button onClick={() => void saveProviderModel(id)} disabled={!providerModelSelections[id].trim()}>Save Model</button></div><div className="provider-buttons"><button onClick={() => void verifyProvider(id)}>Verify Connection</button><button className="secondary-button" disabled={!provider || provider.status !== 'ready'} onClick={() => provider && void toggleProvider(provider)}>{provider?.enabled ? 'Disable' : 'Enable'}</button></div></article>; })}</div><div className="notice-card"><ShieldCheck /><div><strong>Secret protection</strong><p>Never paste API keys into ChatGPT, browser console, or SQLite. Configure <code>OMNIROUTE_API_KEY</code> and <code>FREELLMAPI_API_KEY</code> in your private server environment.</p></div></div></section>
+          <section className="settings-page"><div className="section-title"><h1>AI Brain Settings</h1><p>Configure the two approved providers. API keys are read only from backend environment variables.</p></div><div className="provider-cards">{(['omniroute', 'freellmapi'] as ProviderId[]).map((id) => { const provider = providers.find((item) => item.id === id); return <article className="provider-card" key={id}><div className="provider-card-top"><div className={`provider-symbol ${id}`}>{id === 'omniroute' ? 'O' : 'F'}</div><div><h2>{id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'}</h2><p>{id === 'omniroute' ? 'Primary AI Brain' : 'Automatic Backup Brain'}</p></div><span className={`provider-status ${provider?.status === 'ready' ? 'ready' : ''}`}>{provider?.status ?? 'not checked'}</span></div><div className="provider-meta"><span>API Key: <b>{secureKeyStorageAvailable ? (providerKeyStored[id] ? 'Saved securely' : 'Not configured') : 'Backend environment'}</b></span><span>Enabled: <b>{provider?.enabled ? 'Yes' : 'No'}</b></span></div>{secureKeyStorageAvailable && <div className="provider-key-control"><label htmlFor={id + '-api-key'}>Private API Key</label><input id={id + '-api-key'} type="password" autoComplete="new-password" spellCheck={false} value={providerKeyDrafts[id]} maxLength={4096} onChange={(event) => setProviderKeyDrafts((current) => ({ ...current, [id]: event.target.value }))} placeholder={providerKeyStored[id] ? 'Enter a new key to replace the saved key' : 'Paste key here; it is never displayed again'} /><div><button onClick={() => void saveProviderKey(id)} disabled={!providerKeyDrafts[id].trim()}>Save Securely</button>{providerKeyStored[id] && <button className="secondary-button" onClick={() => void clearProviderKey(id)}>Remove Saved Key</button>}</div><small>Encrypted by Windows DPAPI. The key is not sent to the ZARA frontend API or stored in SQLite.</small></div>}<div className="provider-model-picker"><label htmlFor={id + '-model'}>Model</label><select id={id + '-model'} value={providerModelSelections[id]} onChange={(event) => setProviderModelSelections((current) => ({ ...current, [id]: event.target.value }))} disabled={providerModels[id].length === 0}><option value="">Select after verifying connection</option><option value="auto">auto (provider-selected)</option>{providerModels[id].filter((model) => model !== 'auto').map((model) => <option value={model} key={model}>{model}</option>)}</select><button onClick={() => void saveProviderModel(id)} disabled={!providerModelSelections[id].trim()}>Save Model</button></div><div className="provider-buttons"><button onClick={() => void verifyProvider(id)}>Verify Connection</button><button className="secondary-button" disabled={!provider || provider.status !== 'ready'} onClick={() => provider && void toggleProvider(provider)}>{provider?.enabled ? 'Disable' : 'Enable'}</button></div></article>; })}</div><div className="notice-card"><ShieldCheck /><div><strong>Secret protection</strong><p>Never paste API keys into ChatGPT, browser console, or SQLite. Configure <code>OMNIROUTE_API_KEY</code> and <code>FREELLMAPI_API_KEY</code> in your private server environment.</p></div></div></section>
         )}
 
         {tab === 'voice' && (
