@@ -120,6 +120,7 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 - Safe prompt tools for learning, writing, coding, and research planning.
 - Explicit text-file attachments in chat, read in the browser and limited to 80 KB per file.
 - Browser-based workspace access after the user explicitly chooses a folder: list up to 200 files across three folder levels, open supported text/source files up to 500 KB, and save edits only after confirmation. No file deletion or command execution.
+- Windows desktop file dialogs can open one user-selected UTF-8 text/source file up to 500 KB and save text using a user-selected Save As path with a separate confirmation. No file deletion or unrestricted drive browsing.
 - Conversation rename and deletion, with a confirmation step before deletion.
 
 ## Android app
