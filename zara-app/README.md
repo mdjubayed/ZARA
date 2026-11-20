@@ -23,6 +23,10 @@ No additional AI providers are part of this architecture.
 - Zod request validation
 - Server-Sent Events for chat streaming
 
+## Account security
+
+On first launch, ZARA asks you to create a single-owner password (12–128 characters). Later launches require that password. Passwords are stored as salted scrypt hashes, and session cookies are HttpOnly, SameSite=Strict, and Secure when served over HTTPS. Application APIs require an owner session; see [AUTHENTICATION.md](./AUTHENTICATION.md) for deployment requirements and limitations.
+
 ## Local development
 
 Install dependencies:
@@ -76,6 +80,7 @@ The default provider URLs assume the provider services are reachable from the sa
 All routes are under `/api/v1`:
 
 - `GET /health` — backend health
+- `/auth/status`, `/auth/setup`, `/auth/login`, `/auth/me`, `/auth/logout` — owner account and session lifecycle
 - `/threads` — conversation threads
 - `/threads/:threadId/messages` — thread messages
 - `/settings` — non-secret application settings
@@ -89,7 +94,8 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 
 See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deployment guidance, and limitations.
 
-- Provider keys are read from backend environment variables only.
+- Provider keys are read from backend environment variables or the Windows desktop secure-storage bridge; never from application settings.
+- Every application data and provider API route requires a valid owner session.
 - Provider credentials must never be committed to Git or returned by API responses.
 - Application settings reject secret-like field names, including nested secret fields.
 - The ZARA API binds to loopback (`127.0.0.1`) and should not be exposed or forwarded directly.
