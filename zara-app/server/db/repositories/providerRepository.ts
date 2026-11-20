@@ -21,7 +21,7 @@ export interface Provider {
 
 const DEFAULT_PROVIDERS = [
   { id: 'omniroute', name: 'OmniRoute', status: 'unconfigured' },
-  { id: 'freellmapi', name: 'FreeLLMAPI', status: 'pending_verification' },
+  { id: 'freellmapi', name: 'FreeLLMAPI', status: 'unconfigured' },
 ] as const;
 
 export function isSupportedProviderId(id: string): id is SupportedProviderId {
