@@ -230,16 +230,11 @@ public class ZaraExternalBrowserPlugin extends Plugin {
 
     Intent intent = new Intent(Intent.ACTION_VIEW, uri);
     intent.addCategory(Intent.CATEGORY_BROWSABLE);
-    if (intent.resolveActivity(getContext().getPackageManager()) == null) {
-      call.reject("EXTERNAL_BROWSER_UNAVAILABLE");
-      return;
-    }
-
     try {
       getActivity().startActivity(intent);
       call.resolve();
     } catch (Exception error) {
-      call.reject("EXTERNAL_BROWSER_OPEN_FAILED");
+      call.reject("EXTERNAL_BROWSER_UNAVAILABLE");
     }
   }
 }
