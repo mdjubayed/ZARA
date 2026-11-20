@@ -35,3 +35,18 @@
 
 .file-attach-button{position:relative;width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border:1px solid rgba(104,104,220,.5);border-radius:9px;color:#aebcff;cursor:pointer}
 .file-attach-button input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+
+
+.workspace-toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;padding:14px;border:1px solid rgba(95,112,255,.4);border-radius:13px;background:rgba(9,15,48,.84)}
+.workspace-toolbar button,.workspace-editor button{display:flex;align-items:center;gap:8px;padding:9px 13px;border:1px solid #6e62ff;border-radius:9px;background:linear-gradient(110deg,#6127db,#1837a8);color:#fff}
+.workspace-toolbar span,.workspace-safety{color:#9ba6cf;font-size:11px}
+.workspace-layout{display:grid;grid-template-columns:minmax(210px, .7fr) minmax(0, 1.8fr);gap:14px;min-height:390px}
+.workspace-file-list,.workspace-editor{display:flex;flex-direction:column;gap:9px;min-width:0;padding:14px;border:1px solid rgba(95,112,255,.35);border-radius:13px;background:rgba(9,15,48,.8)}
+.workspace-file-list>strong,.workspace-editor>strong{font-size:12px;color:#cbd4ff;overflow-wrap:anywhere}
+.workspace-file-list>button{padding:8px 10px;border:1px solid rgba(95,112,255,.2);border-radius:8px;background:#10183f;color:#e5eaff;text-align:left;overflow-wrap:anywhere}
+.workspace-file-list>button.selected{border-color:#7668ff;background:#21175b}
+.workspace-editor textarea{width:100%;flex:1;min-height:280px;resize:vertical;padding:12px;border:1px solid #4848a5;border-radius:9px;background:#080e2c;color:#fff;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:12px;line-height:1.6}
+.workspace-editor>div{display:flex;gap:9px;flex-wrap:wrap}
+.workspace-editor button.secondary-button{background:#101b48;border-color:#3c4c9a}
+.workspace-safety{margin-top:13px;line-height:1.6}
+@media(max-width:850px){.workspace-layout{grid-template-columns:1fr}.workspace-file-list{max-height:220px;overflow:auto}.workspace-editor textarea{min-height:220px}}
