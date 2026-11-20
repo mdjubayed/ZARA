@@ -50,6 +50,10 @@ public class ZaraSpeechRecognitionPlugin extends Plugin {
 
   @PluginMethod
   public void startListening(PluginCall call) {
+    getActivity().runOnUiThread(() -> startListeningOnMainThread(call));
+  }
+
+  private void startListeningOnMainThread(PluginCall call) {
     String language = call.getString("language", "bn-BD");
     if (!"bn-BD".equals(language) && !"en-US".equals(language)) {
       call.reject("UNSUPPORTED_SPEECH_LANGUAGE");
@@ -68,12 +72,14 @@ public class ZaraSpeechRecognitionPlugin extends Plugin {
 
   @PermissionCallback
   private void microphonePermissionCallback(PluginCall call) {
-    if (getPermissionState("microphone") != PermissionState.GRANTED) {
-      call.reject("MICROPHONE_PERMISSION_DENIED");
-      return;
-    }
-    String language = call.getString("language", "bn-BD");
-    beginRecognition(call, language);
+    getActivity().runOnUiThread(() -> {
+      if (getPermissionState("microphone") != PermissionState.GRANTED) {
+        call.reject("MICROPHONE_PERMISSION_DENIED");
+        return;
+      }
+      String language = call.getString("language", "bn-BD");
+      beginRecognition(call, language);
+    });
   }
 
   private void beginRecognition(PluginCall call, String language) {
@@ -132,27 +138,31 @@ public class ZaraSpeechRecognitionPlugin extends Plugin {
 
   @PluginMethod
   public void stopListening(PluginCall call) {
-    if (recognizer != null) {
-      try {
-        recognizer.stopListening();
-      } catch (Exception error) {
-        releaseRecognizer();
-        call.reject("SPEECH_RECOGNITION_STOP_FAILED");
-        return;
+    getActivity().runOnUiThread(() -> {
+      if (recognizer != null) {
+        try {
+          recognizer.stopListening();
+        } catch (Exception error) {
+          releaseRecognizer();
+          call.reject("SPEECH_RECOGNITION_STOP_FAILED");
+          return;
+        }
       }
-    }
-    call.resolve();
+      call.resolve();
+    });
   }
 
   @PluginMethod
   public void cancelListening(PluginCall call) {
-    if (recognizer != null) {
-      try {
-        recognizer.cancel();
-      } catch (Exception ignored) {}
-    }
-    releaseRecognizer();
-    call.resolve();
+    getActivity().runOnUiThread(() -> {
+      if (recognizer != null) {
+        try {
+          recognizer.cancel();
+        } catch (Exception ignored) {}
+      }
+      releaseRecognizer();
+      call.resolve();
+    });
   }
 
   private void releaseRecognizer() {
