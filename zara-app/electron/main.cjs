@@ -215,7 +215,7 @@ ipcMain.handle('zara:launch-app', async (event, appId) => {
   if (!approved) return { ok: false, error: 'CANCELLED' };
 
   return new Promise((resolve) => {
-    const child = spawn(executable, [],
+    const child = spawn(executable, [], {
       detached: true,
       stdio: 'ignore',
       shell: false,
