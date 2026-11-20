@@ -12,6 +12,7 @@ import {
 import { verifyProvider } from '../services/brainManager.js';
 import { initializeProviderAdapters } from '../services/providerAdapters.js';
 import { hasProviderApiKey } from '../services/secretStore.js';
+import { ProviderRequestError } from '../services/providerAdapter.js';
 
 export const providerRouter = Router();
 
@@ -60,8 +61,30 @@ providerRouter.post('/:id/verify', async (req, res) => {
     const provider = markProviderReadyAfterVerification(id);
     return res.status(200).json({ provider: provider ? serializeProvider(provider) : null, modelCount: models.length, models });
   } catch (error) {
-    const code = error instanceof Error ? error.message : 'PROVIDER_VERIFICATION_FAILED';
-    return res.status(502).json({ error: code });
+    if (error instanceof ProviderRequestError) {
+      setProviderStatus(id, 'pending_verification');
+
+      if (error.code === 'PROVIDER_AUTHENTICATION_FAILED') {
+        return res.status(401).json({ error: error.code });
+      }
+
+      if (error.code === 'PROVIDER_RATE_LIMITED') {
+        return res.status(429).json({ error: error.code });
+      }
+
+      if (error.code === 'PROVIDER_TIMEOUT') {
+        return res.status(504).json({ error: error.code });
+      }
+
+      if (error.code === 'PROVIDER_CONNECTION_FAILED') {
+        return res.status(503).json({ error: error.code });
+      }
+
+      return res.status(502).json({ error: error.code });
+    }
+
+    setProviderStatus(id, 'pending_verification');
+    return res.status(502).json({ error: 'PROVIDER_VERIFICATION_FAILED' });
   }
 });
 
