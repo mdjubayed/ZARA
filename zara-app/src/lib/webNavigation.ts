@@ -50,7 +50,7 @@ export function validateWebPageUrl(rawUrl: string): WebPageUrlValidation {
   if (parsed.protocol !== 'https:') {
     return { ok: false, error: 'For safety, ZARA only opens HTTPS websites.' };
   }
-  if (parsed.username || parsed.password) {
+  if (parsed.username || parsed.password || (parsed.port && parsed.port !== '443')) {
     return { ok: false, error: 'Website addresses containing usernames or passwords are not allowed.' };
   }
 
@@ -62,6 +62,11 @@ export function validateWebPageUrl(rawUrl: string): WebPageUrlValidation {
     || hostname.endsWith('.internal')
     || hostname.endsWith('.test')
     || hostname.endsWith('.invalid')
+    || hostname.endsWith('.lan')
+    || hostname.endsWith('.corp')
+    || hostname.endsWith('.intranet')
+    || hostname.endsWith('.localdomain')
+    || hostname.endsWith('.home.arpa')
     || !hostname.includes('.');
 
   if (isIpAddress || isLocalName) {
