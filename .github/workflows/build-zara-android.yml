@@ -41,33 +41,9 @@ jobs:
         working-directory: zara-app
         run: npm run build:mobile
 
-      - name: Generate Android project
+      - name: Generate Android project and apply session-cookie policy
         working-directory: zara-app
-        run: npx cap add android
-
-      - name: Enable scoped third-party session cookies
-        working-directory: zara-app
-        shell: bash
-        run: |
-          cat > android/app/src/main/java/com/zara/assistant/MainActivity.java <<'JAVA'
-          package com.zara.assistant;
-
-          import android.webkit.CookieManager;
-          import com.getcapacitor.BridgeActivity;
-
-          public class MainActivity extends BridgeActivity {
-            @Override
-            protected void load() {
-              super.load();
-              if (getBridge() != null) {
-                CookieManager.getInstance().setAcceptThirdPartyCookies(
-                  getBridge().getWebView(),
-                  true
-                );
-              }
-            }
-          }
-          JAVA
+        run: npm run mobile:prepare
 
       - name: Sync Capacitor
         working-directory: zara-app
