@@ -11,6 +11,8 @@ import './App.css';
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
 type Provider = { id: ProviderId; name: string; status: string; enabled: number };
+type Thread = { id: string; title: string; updated_at?: string };
+type SearchResult = { id: string; thread_id: string; thread_title: string; content: string; role: 'user' | 'assistant' | 'system' };
 type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; created_at?: string };
 
 interface BrowserSpeechRecognition extends EventTarget {
@@ -50,6 +52,10 @@ export default function App() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>('omniroute');
   const [threadId, setThreadId] = useState('');
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -75,16 +81,17 @@ export default function App() {
     api<{ providers: Provider[] }>('/providers')
       .then((result) => { if (active) setProviders(result.providers); })
       .catch(() => { if (active) setProviders([]); });
-    api<{ threads: Array<{ id: string }> }>('/threads')
-      .then(async ({ threads }) => {
+    api<{ threads: Thread[] }>('/threads')
+      .then(async ({ threads: loadedThreads }) => {
+        if (active) setThreads(loadedThreads);
         if (!active) return;
-        if (threads[0]?.id) {
-          setThreadId(threads[0].id);
-          const result = await api<{ messages: Message[] }>(`/threads/${threads[0].id}/messages`);
+        if (loadedThreads[0]?.id) {
+          setThreadId(loadedThreads[0].id);
+          const result = await api<{ messages: Message[] }>(`/threads/${loadedThreads[0].id}/messages`);
           if (active) setMessages(result.messages);
         } else {
           const result = await api<{ thread: { id: string } }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
-          if (active) setThreadId(result.thread.id);
+          if (active) { setThreadId(result.thread.id); setThreads([result.thread]); }
         }
       })
       .catch(() => setOnline(false));
@@ -95,6 +102,7 @@ export default function App() {
     try {
       const result = await api<{ thread: { id: string } }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
       setThreadId(result.thread.id);
+      setThreads((current) => [result.thread, ...current]);
       setMessages([]);
       setTab('chat');
     } catch (error) {
@@ -170,6 +178,44 @@ export default function App() {
       setBusy(false);
     }
   }, [autoSpeak, busy, input, refreshProviders, selectedProvider, threadId, voiceLanguage]);
+
+  const openThread = async (id: string) => {
+    try {
+      const result = await api<{ messages: Message[] }>(`/threads/${id}/messages`);
+      setThreadId(id);
+      setMessages(result.messages);
+      setHistoryOpen(false);
+      setTab('chat');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not load conversation');
+    }
+  };
+
+  const searchHistory = async () => {
+    const query = historyQuery.trim();
+    if (!query) { setSearchResults([]); return; }
+    try {
+      const result = await api<{ data: SearchResult[] }>(`/search?q=${encodeURIComponent(query)}&limit=30`);
+      setSearchResults(result.data);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Search failed');
+    }
+  };
+
+  const removeThread = async (id: string) => {
+    if (!window.confirm('Delete this conversation and its messages? This cannot be undone.')) return;
+    try {
+      await api(`/threads/${id}`, { method: 'DELETE' });
+      const remaining = threads.filter((thread) => thread.id !== id);
+      setThreads(remaining);
+      if (threadId === id) {
+        if (remaining[0]) await openThread(remaining[0].id);
+        else await startNewChat();
+      }
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not delete conversation');
+    }
+  };
 
   const startVoiceRecognition = useCallback(() => {
     const speechWindow = window as SpeechRecognitionWindow;
@@ -249,7 +295,25 @@ export default function App() {
 
         {tab === 'chat' && (
           <section className="chat-page">
-            <div className="chat-toolbar"><div><h1>Chat with ZARA</h1><p>One assistant · two AI providers · automatic backup</p></div><div className="provider-select"><label htmlFor="provider-choice">Brain</label><select id="provider-choice" value={selectedProvider} onChange={(event) => setSelectedProvider(event.target.value as ProviderId)}><option value="omniroute">OmniRoute · Primary</option><option value="freellmapi">FreeLLMAPI · Backup</option></select></div><button className="new-chat-button" onClick={startNewChat}>+ New Chat</button></div>
+            <div className="chat-toolbar"><div><h1>Chat with ZARA</h1><p>One assistant · two AI providers · automatic backup</p></div><button className="new-chat-button" onClick={() => setHistoryOpen((value) => !value)}>History</button><div className="provider-select"><label htmlFor="provider-choice">Brain</label><select id="provider-choice" value={selectedProvider} onChange={(event) => setSelectedProvider(event.target.value as ProviderId)}><option value="omniroute">OmniRoute · Primary</option><option value="freellmapi">FreeLLMAPI · Backup</option></select></div><button className="new-chat-button" onClick={startNewChat}>+ New Chat</button></div>
+            {historyOpen && (
+              <section className="history-drawer">
+                <div className="history-search">
+                  <input value={historyQuery} onChange={(event) => setHistoryQuery(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void searchHistory(); }} placeholder="Search conversations…" />
+                  <button onClick={() => void searchHistory()}><Search size={16} /> Search</button>
+                </div>
+                {searchResults.length > 0 && <div className="history-results">{searchResults.map((result) => <button key={result.id} onClick={() => void openThread(result.thread_id)}><strong>{result.thread_title}</strong><span>{result.content.slice(0, 120)}</span></button>)}</div>}
+                <div className="history-list">
+                  {threads.map((thread) => (
+                    <div className={`history-item ${thread.id === threadId ? 'selected' : ''}`} key={thread.id}>
+                      <button className="history-open" onClick={() => void openThread(thread.id)}>{thread.title}</button>
+                      <button className="history-delete" aria-label="Delete conversation" onClick={() => void removeThread(thread.id)}>×</button>
+                    </div>
+                  ))}
+                  {threads.length === 0 && <p>No saved conversations yet.</p>}
+                </div>
+              </section>
+            )}
             <div className="chat-messages">{messages.length === 0 && <div className="chat-empty"><div className="empty-orb"><Zap size={35} /></div><h2>How can I help you?</h2><p>Ask ZARA anything. Replies use your configured AI provider.</p><div className="suggestion-row"><button onClick={() => setInput('Explain something in simple Bengali.')}>Explain in Bengali</button><button onClick={() => setInput('Help me write a TypeScript function.')}>Write code</button></div></div>}{messages.map((message) => <article className={`message-row ${message.role}`} key={message.id}><div className="message-avatar">{message.role === 'user' ? 'You' : 'Z'}</div><div className="message-content"><strong>{message.role === 'user' ? 'You' : 'ZARA'}</strong><p>{message.content || (busy ? 'ZARA is thinking…' : '')}</p></div></article>)}</div>
             <div className="composer-wrap"><div className="composer"><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder="Message ZARA…" rows={1} /><button className="send-button" onClick={() => void sendMessage()} disabled={!input.trim() || busy || !threadId}><Send size={19} /></button></div><small>{enabledProvider ? `Using ${enabledProvider.name}` : 'Choose a verified and enabled provider in Settings. API keys stay on the backend.'}</small></div>
           </section>
