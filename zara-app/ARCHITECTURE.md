@@ -8,6 +8,14 @@
 - SQLite: threads, messages, provider state, settings, idempotency records, and FTS5 search.
 - Brain Manager: one orchestration layer for exactly two provider adapters.
 
+## Authentication boundary
+
+- One private installation has one owner account; the first-run setup can create it only once.
+- Passwords use salted scrypt hashes; raw passwords are never persisted.
+- Random session tokens are delivered only through HttpOnly, SameSite=Strict cookies; SQLite stores only token hashes and expiry timestamps.
+- All application routes except health and the authentication lifecycle require an active owner session.
+- HTTPS is mandatory for any public or remote deployment. See [AUTHENTICATION.md](./AUTHENTICATION.md).
+
 ## AI provider decision
 
 1. OmniRoute is the default primary provider.
@@ -67,6 +75,6 @@ These are local service addresses, not hosted provider endpoints. Configure the 
 
 - This repository currently provides the local-first web application foundation.
 - Browser speech recognition depends on browser support and may use the browser vendor's online service.
-- There is no account login or multi-user authorization yet. Do not expose the API as a public service.
+- Authentication currently supports one owner per installation, not multiple users or roles. Rate limiting is process-local; a multi-instance deployment requires shared session and rate-limit infrastructure.
 - Windows Electron packaging configuration and allowlisted Notepad/Calculator/browser launch actions are present but the installer has not yet been built or verified.
 - Android APK packaging, unrestricted desktop control, background autonomous agents, and external web research are not complete.
