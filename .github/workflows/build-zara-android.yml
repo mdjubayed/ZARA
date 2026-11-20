@@ -39,9 +39,7 @@ jobs:
 
       - name: Build mobile web assets
         working-directory: zara-app
-        env:
-          VITE_MOBILE_APP: 'true'
-        run: npm run build
+        run: npm run build:mobile
 
       - name: Generate Android project
         working-directory: zara-app
