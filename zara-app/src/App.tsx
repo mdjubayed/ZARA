@@ -301,6 +301,7 @@ export default function App() {
   const addMemory = async () => {
     const content = memoryDraft.trim();
     if (!content) return;
+    if (memories.length >= 100) { setToast('Memory limit reached. Delete an old note before adding another.'); return; }
     try {
       await saveMemories([{ id: crypto.randomUUID(), content, createdAt: new Date().toISOString() }, ...memories]);
       setMemoryDraft('');
@@ -518,14 +519,14 @@ export default function App() {
         {tab === 'memory' && (
           <section className="module-page">
             <div className="section-title"><h1>Conversation Memory</h1><p>Save information you explicitly want ZARA to remember. Memories stay in this ZARA server's settings database.</p></div>
-            <div className="memory-composer"><textarea value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} placeholder="Write a useful note for future conversations…" rows={3} /><button onClick={() => void addMemory()} disabled={!memoryDraft.trim()}>Save Memory</button></div>
+            <div className="memory-composer"><textarea value={memoryDraft} maxLength={2000} onChange={(event) => setMemoryDraft(event.target.value)} placeholder="Write a useful note for future conversations…" rows={3} /><button onClick={() => void addMemory()} disabled={!memoryDraft.trim()}>Save Memory</button></div>
             <div className="memory-list">{memories.map((entry) => <article className="memory-item" key={entry.id}><p>{entry.content}</p><small>{new Date(entry.createdAt).toLocaleString()}</small><button onClick={() => void deleteMemory(entry.id)}>Delete</button></article>)}{memories.length === 0 && <p>No memories saved. Add only information you want ZARA to use later.</p>}</div>
           </section>
         )}
         {tab === 'agents' && (
           <section className="module-page">
             <div className="section-title"><h1>AI Agent Templates</h1><p>Create reusable instructions for ZARA. Templates only prepare a prompt; they do not run autonomous tasks.</p></div>
-            <div className="agent-form"><input value={agentDraft.name} onChange={(event) => setAgentDraft((v) => ({ ...v, name: event.target.value }))} placeholder="Agent name" /><input value={agentDraft.description} onChange={(event) => setAgentDraft((v) => ({ ...v, description: event.target.value }))} placeholder="Short description (optional)" /><textarea rows={4} value={agentDraft.prompt} onChange={(event) => setAgentDraft((v) => ({ ...v, prompt: event.target.value }))} placeholder="Instructions for this agent…" /><button onClick={() => void addAgentTemplate()} disabled={!agentDraft.name.trim() || !agentDraft.prompt.trim()}>Save Template</button></div>
+            <div className="agent-form"><input maxLength={80} value={agentDraft.name} onChange={(event) => setAgentDraft((v) => ({ ...v, name: event.target.value }))} placeholder="Agent name" /><input value={agentDraft.description} onChange={(event) => setAgentDraft((v) => ({ ...v, description: event.target.value }))} placeholder="Short description (optional)" /><textarea rows={4} maxLength={4000} value={agentDraft.prompt} onChange={(event) => setAgentDraft((v) => ({ ...v, prompt: event.target.value }))} placeholder="Instructions for this agent…" /><button onClick={() => void addAgentTemplate()} disabled={!agentDraft.name.trim() || !agentDraft.prompt.trim()}>Save Template</button></div>
             <div className="agent-list">{agentTemplates.map((agent) => <article className="agent-item" key={agent.id}><h3>{agent.name}</h3><p>{agent.description}</p><pre>{agent.prompt}</pre><div><button onClick={() => runToolPrompt(agent.prompt)}>Use in Chat</button><button onClick={() => void saveAgents(agentTemplates.filter((item) => item.id !== agent.id))}>Delete</button></div></article>)}{agentTemplates.length === 0 && <p>No agent templates created yet.</p>}</div>
           </section>
         )}
