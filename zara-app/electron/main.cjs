@@ -192,6 +192,64 @@ ipcMain.handle('zara:clear-provider-key', async (event, providerId) => {
   }
 });
 
+const allowedTextExtensions = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.html', '.css', '.xml', '.log', '.yml', '.yaml'];
+
+ipcMain.handle('zara:open-text-file', async (event) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'UNAUTHORIZED_CALLER' };
+  if (!mainWindow) return { ok: false, error: 'WINDOW_UNAVAILABLE' };
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Open a text file in ZARA',
+      properties: ['openFile'],
+      filters: [{ name: 'Text and source files', extensions: allowedTextExtensions.map((value) => value.slice(1)) }],
+    });
+    if (result.canceled || result.filePaths.length !== 1) return { ok: false, error: 'CANCELLED' };
+    const filePath = result.filePaths[0];
+    const extension = path.extname(filePath).toLowerCase();
+    if (!allowedTextExtensions.includes(extension)) return { ok: false, error: 'FILE_TYPE_NOT_ALLOWED' };
+    const content = await readFile(filePath);
+    if (content.byteLength > 512000) return { ok: false, error: 'FILE_TOO_LARGE' };
+    const text = content.toString('utf8');
+    if (text.includes('\\uFFFD')) return { ok: false, error: 'FILE_NOT_VALID_UTF8' };
+    return { ok: true, name: path.basename(filePath), content: text };
+  } catch {
+    return { ok: false, error: 'FILE_READ_FAILED' };
+  }
+});
+
+ipcMain.handle('zara:save-text-file', async (event, suggestedName, content) => {
+  if (!isTrustedRenderer(event)) return { ok: false, error: 'UNAUTHORIZED_CALLER' };
+  if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 512000) {
+    return { ok: false, error: 'INVALID_OR_LARGE_CONTENT' };
+  }
+  const safeName = typeof suggestedName === 'string' && /^[a-zA-Z0-9 _.-]{1,100}$/.test(suggestedName)
+    ? suggestedName
+    : 'zara-note.txt';
+  const extension = path.extname(safeName).toLowerCase();
+  if (!allowedTextExtensions.includes(extension)) return { ok: false, error: 'FILE_TYPE_NOT_ALLOWED' };
+  if (!mainWindow) return { ok: false, error: 'WINDOW_UNAVAILABLE' };
+
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Save a text file from ZARA',
+      defaultPath: safeName,
+      filters: [{ name: 'Text and source files', extensions: allowedTextExtensions.map((value) => value.slice(1)) }],
+    });
+    if (result.canceled || !result.filePath) return { ok: false, error: 'CANCELLED' };
+    const approved = await confirmNativeAction(
+      'Confirm file save',
+      'Save this text file to the selected location?',
+      'ZARA will write only the text you provided to the file path selected in the save dialog.',
+      'Save file',
+    );
+    if (!approved) return { ok: false, error: 'CANCELLED' };
+    await writeFile(result.filePath, content, { encoding: 'utf8', flag: 'w', mode: 0o600 });
+    return { ok: true, name: path.basename(result.filePath) };
+  } catch {
+    return { ok: false, error: 'FILE_WRITE_FAILED' };
+  }
+});
+
 ipcMain.handle('zara:launch-app', async (event, appId) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) {
     return { ok: false, error: 'UNAUTHORIZED_CALLER' };
