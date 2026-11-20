@@ -11,7 +11,7 @@
   "theme_color": "#080d27",
   "icons": [
     {
-      "src": "/favicon.svg",
+      "src": "/zara-pwa.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
