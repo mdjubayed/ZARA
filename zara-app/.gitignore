@@ -33,3 +33,7 @@ data/*.sqlite
 data/*.sqlite-*
 data/*.db
 data/*.db-*
+
+# Native desktop build output
+dist-server
+release
