@@ -146,19 +146,22 @@ public class ZaraSpeechRecognitionPlugin extends Plugin {
 
   @PluginMethod
   public void cancelListening(PluginCall call) {
+    if (recognizer != null) {
+      try {
+        recognizer.cancel();
+      } catch (Exception ignored) {}
+    }
     releaseRecognizer();
     call.resolve();
   }
 
   private void releaseRecognizer() {
     if (recognizer != null) {
-      try {
-        recognizer.cancel();
-      } catch (Exception ignored) {}
-      try {
-        recognizer.destroy();
-      } catch (Exception ignored) {}
+      SpeechRecognizer current = recognizer;
       recognizer = null;
+      try {
+        current.destroy();
+      } catch (Exception ignored) {}
     }
   }
 
