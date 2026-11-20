@@ -32,7 +32,7 @@
 
 - Conversation history and user-saved memories are stored in the local SQLite database.
 - Saved memory notes are included in later provider requests as bounded context. Users can review and delete saved notes in the Memory screen.
-- Browser speech recognition may process audio using the browser vendor's online service. The app sends the resulting transcript to the selected AI provider.
+- Browser speech recognition may process audio using the browser vendor's online service. The app sends the resulting transcript to the selected AI provider. Browser speech synthesis reads replies using locally available browser/operating-system voices; voice availability varies by device.
 
 ## Workspace file access
 
