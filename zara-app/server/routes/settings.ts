@@ -107,7 +107,7 @@ settingsRouter.put('/', (req, res) => {
 
   return res.status(200).json({
     success: true,
-    settings: getAllSettings(),
+    settings: getPublicSettings(),
   });
 });
 
