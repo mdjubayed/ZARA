@@ -11,19 +11,23 @@ const BLOCKED_DIRECTORY_NAMES = new Set([
 
 const SENSITIVE_FILE_NAME = /(^|[._-])(secret|secrets|credential|credentials|password|passwd|token|private|id_rsa|id_ed25519|keystore|wallet)([._-]|$)|^\.env($|\.)/i;
 
+function isSensitiveName(name: string): boolean {
+  return SENSITIVE_FILE_NAME.test(name);
+}
+
 export function isSafeWorkspaceDirectory(relativePath: string): boolean {
   if (!relativePath || relativePath.length > 1024 || relativePath.startsWith('/') || relativePath.includes('\\')) return false;
   const segments = relativePath.split('/');
-  return !segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.startsWith('.') || BLOCKED_DIRECTORY_NAMES.has(segment.toLowerCase()));
+  return !segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.startsWith('.') || BLOCKED_DIRECTORY_NAMES.has(segment.toLowerCase()) || isSensitiveName(segment));
 }
 
 export function isSafeWorkspacePath(relativePath: string): boolean {
   if (!relativePath || relativePath.length > 1024 || relativePath.startsWith('/') || relativePath.includes('\\')) return false;
   const segments = relativePath.split('/');
   if (segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.startsWith('.'))) return false;
-  if (segments.slice(0, -1).some((segment) => BLOCKED_DIRECTORY_NAMES.has(segment.toLowerCase()))) return false;
+  if (segments.slice(0, -1).some((segment) => BLOCKED_DIRECTORY_NAMES.has(segment.toLowerCase()) || isSensitiveName(segment))) return false;
   const fileName = segments[segments.length - 1];
-  if (SENSITIVE_FILE_NAME.test(fileName)) return false;
+  if (isSensitiveName(fileName)) return false;
   const extension = fileName.includes('.') ? '.' + fileName.split('.').pop()!.toLowerCase() : '';
   return ALLOWED_TEXT_EXTENSIONS.has(extension);
 }
