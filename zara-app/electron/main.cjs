@@ -56,6 +56,21 @@ function isTrustedRenderer(event) {
   return Boolean(mainWindow && event.sender === mainWindow.webContents);
 }
 
+async function confirmNativeAction(title, message, detail, confirmLabel) {
+  if (!mainWindow) return false;
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    title,
+    message,
+    detail,
+    buttons: ['Cancel', confirmLabel],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  });
+  return result.response === 1;
+}
+
 function providerKeyEnvironmentName(providerId) {
   return providerId === 'omniroute'
     ? 'OMNIROUTE_API_KEY'
@@ -126,6 +141,14 @@ ipcMain.handle('zara:save-provider-key', async (event, providerId, rawKey) => {
     return { ok: false, error: 'INVALID_API_KEY' };
   }
 
+  const approved = await confirmNativeAction(
+    'Save provider API key',
+    'Save this provider key in encrypted Windows storage?',
+    'The key will be encrypted for this Windows user account. ZARA will not display it again.',
+    'Save key',
+  );
+  if (!approved) return { ok: false, error: 'CANCELLED' };
+
   try {
     const next = { ...storedProviderKeys, [providerId]: key };
     await writeEncryptedProviderKeys(next);
@@ -144,6 +167,14 @@ ipcMain.handle('zara:clear-provider-key', async (event, providerId) => {
   const envName = providerKeyEnvironmentName(providerId);
   if (!envName) return { ok: false, error: 'INVALID_PROVIDER' };
 
+  const approved = await confirmNativeAction(
+    'Remove provider API key',
+    'Remove the saved key from this Windows account?',
+    'ZARA will no longer use this saved credential.',
+    'Remove key',
+  );
+  if (!approved) return { ok: false, error: 'CANCELLED' };
+
   try {
     const next = { ...storedProviderKeys, [providerId]: '' };
     if (next.omniroute || next.freellmapi) {
@@ -161,7 +192,7 @@ ipcMain.handle('zara:clear-provider-key', async (event, providerId) => {
   }
 });
 
-ipcMain.handle('zara:launch-app', (event, appId) => {
+ipcMain.handle('zara:launch-app', async (event, appId) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) {
     return { ok: false, error: 'UNAUTHORIZED_CALLER' };
   }
@@ -175,8 +206,16 @@ ipcMain.handle('zara:launch-app', (event, appId) => {
     return { ok: false, error: 'APP_NOT_SUPPORTED' };
   }
 
+  const approved = await confirmNativeAction(
+    'Open Windows application',
+    `Allow ZARA to open ${appId === 'notepad' ? 'Notepad' : 'Calculator'}?`,
+    'Only this approved application will be opened. ZARA will not run arbitrary commands.',
+    'Open app',
+  );
+  if (!approved) return { ok: false, error: 'CANCELLED' };
+
   return new Promise((resolve) => {
-    const child = spawn(executable, [], {
+    const child = spawn(executable, [],
       detached: true,
       stdio: 'ignore',
       shell: false,
@@ -199,6 +238,13 @@ ipcMain.handle('zara:open-external', async (event, rawUrl) => {
     if (target.protocol !== 'https:' && target.protocol !== 'http:') {
       return { ok: false, error: 'URL_SCHEME_NOT_ALLOWED' };
     }
+    const approved = await confirmNativeAction(
+      'Open external website',
+      `Open ${target.hostname} in your default browser?`,
+      'The website will open outside ZARA.',
+      'Open website',
+    );
+    if (!approved) return { ok: false, error: 'CANCELLED' };
     await shell.openExternal(target.toString());
     return { ok: true };
   } catch {
