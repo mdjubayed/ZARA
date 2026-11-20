@@ -67,3 +67,24 @@ export async function startNativeSpeech(
     },
   };
 }
+
+
+export function getNativeSpeechErrorMessage(code: string): string {
+  const messages: Record<string, string> = {
+    MICROPHONE_PERMISSION_DENIED: 'Microphone permission was not granted. Allow microphone access in Android Settings.',
+    SPEECH_RECOGNIZER_UNAVAILABLE: 'No Android speech-recognition service is available on this device.',
+    SPEECH_RECOGNITION_ALREADY_ACTIVE: 'Voice recognition is already running.',
+    SPEECH_RECOGNITION_START_FAILED: 'Android could not start voice recognition. Check microphone permission and try again.',
+    ANDROID_SPEECH_ERROR_1: 'Voice recognition timed out while connecting to its service.',
+    ANDROID_SPEECH_ERROR_2: 'Voice recognition could not connect. Check the device connection and try again.',
+    ANDROID_SPEECH_ERROR_3: 'The microphone could not capture audio. Check microphone access.',
+    ANDROID_SPEECH_ERROR_6: 'No speech was detected. Tap Start Speaking and try again.',
+    ANDROID_SPEECH_ERROR_7: 'The speech service could not recognize those words. Try again or change the language.',
+    ANDROID_SPEECH_ERROR_8: 'The Android speech service is busy. Wait a moment and try again.',
+    ANDROID_SPEECH_ERROR_9: 'Android did not grant microphone permission.',
+    ANDROID_SPEECH_ERROR_10: 'The speech service is receiving too many requests. Wait and try again.',
+    ANDROID_SPEECH_ERROR_12: 'This speech service does not support the selected language.',
+    ANDROID_SPEECH_ERROR_13: 'The selected language is not currently available on this device.',
+  };
+  return messages[code] ?? 'Android voice input failed. Check the microphone, language, and device speech service.';
+}
