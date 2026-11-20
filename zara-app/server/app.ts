@@ -34,7 +34,10 @@ app.use((req, res, next) => {
   const requestHost = req.get('host');
   if (origin && requestHost) {
     try {
-      if (new URL(origin).host === requestHost) {
+      const originUrl = new URL(origin);
+      const forwardedProtocol = req.get('x-forwarded-proto')?.split(',')[0].trim();
+      const requestProtocol = forwardedProtocol || req.protocol;
+      if (originUrl.host === requestHost && originUrl.protocol === `${requestProtocol}:`) {
         next();
         return;
       }
