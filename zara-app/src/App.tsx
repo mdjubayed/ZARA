@@ -257,6 +257,10 @@ export default function App() {
     try {
       setWorkspaceBusy(true);
       const file = await item.handle.getFile();
+      if (!/\\.(txt|md|json|csv|ts|tsx|js|jsx|py|html|css|xml|log|yml|yaml|toml|sql)$/i.test(file.name)) {
+        setToast('Only supported text and source-code files can be opened.');
+        return;
+      }
       if (file.size > 500000) {
         setToast('This file is larger than the 500 KB editor limit.');
         return;
@@ -274,6 +278,7 @@ export default function App() {
   const saveWorkspaceFile = async () => {
     const selected = workspaceFiles.find((item) => item.path === selectedWorkspacePath);
     if (!selected) return;
+    if (workspaceContent.length > 500000) { setToast('Edited content exceeds the 500 KB save limit.'); return; }
     if (!window.confirm('Save changes to ' + selected.path + '? This will overwrite the selected file.')) return;
     try {
       setWorkspaceBusy(true);
