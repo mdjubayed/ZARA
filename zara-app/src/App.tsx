@@ -517,8 +517,9 @@ export default function App() {
       }
       return;
     }
-    const opened = window.open(validation.url, '_blank', 'noopener,noreferrer');
-    if (!opened) setToast('The browser blocked the new tab. Allow pop-ups for ZARA and try again.');
+    const opened = window.open(validation.url, '_blank');
+    if (opened) opened.opener = null;
+    else setToast('The browser blocked the new tab. Allow pop-ups for ZARA and try again.');
   };
 
   const searchWeb = () => {
@@ -540,7 +541,7 @@ export default function App() {
       }).catch(() => setToast('Could not open web search.'));
       return;
     }
-    const opened = window.open(searchUrl, '_blank', 'noopener,noreferrer');
+    const opened = window.open(searchUrl, '_blank');
     if (!opened) setToast('The browser blocked the new tab. Allow pop-ups for ZARA and try again.');
   };
 
