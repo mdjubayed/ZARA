@@ -8,7 +8,7 @@ import {
 import heroImage from './assets/zara-hero.png';
 import './App.css';
 import { getApiBase } from './lib/apiBase.js';
-import { isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
+import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
 
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
@@ -531,14 +531,15 @@ export default function App() {
           (code) => {
             nativeSpeechSessionRef.current = null;
             setVoiceListening(false);
-            setVoiceError('Android voice input error: ' + code);
+            setVoiceError(getNativeSpeechErrorMessage(code));
           },
         );
         nativeSpeechSessionRef.current = session;
         setVoiceListening(true);
       } catch (error) {
         setVoiceListening(false);
-        setVoiceError(error instanceof Error ? error.message : 'Could not start Android voice input.');
+        const code = error instanceof Error ? error.message : 'SPEECH_RECOGNITION_START_FAILED';
+        setVoiceError(getNativeSpeechErrorMessage(code));
       }
       return;
     }
