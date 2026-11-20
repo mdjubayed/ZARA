@@ -11,7 +11,7 @@ import {
   releaseChatRequest,
 } from '../db/repositories/chatRequestRepository.js';
 
-import { getThreadById } from '../db/repositories/threadRepository.js';
+import { getThreadById, updateThreadTitle } from '../db/repositories/threadRepository.js';
 import { getSetting } from '../db/repositories/settingsRepository.js';
 import {
   streamWithFailover,
@@ -121,6 +121,11 @@ export async function sendChatMessage(
   }
 
   try {
+    const currentThread = getThreadById(threadId);
+    if (currentThread?.title === 'New Chat') {
+      updateThreadTitle(threadId, content.replace(/\\s+/g, ' ').slice(0, 60));
+    }
+
     const history = getMessagesByThread(threadId).slice(-21);
     const savedMemories = getSetting<Array<{ content?: unknown }>>(
       'zara.memory.entries',
