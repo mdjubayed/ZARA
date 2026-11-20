@@ -1,6 +1,7 @@
 'use strict';
 
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { spawn } = require('node:child_process');
 const { createServer } = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
@@ -48,6 +49,51 @@ if (!gotSingleInstanceLock) {
     if (process.platform !== 'darwin') app.quit();
   });
 }
+
+ipcMain.handle('zara:launch-app', (event, appId) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    return { ok: false, error: 'UNAUTHORIZED_CALLER' };
+  }
+
+  const allowedApps = {
+    notepad: 'notepad.exe',
+    calculator: 'calc.exe',
+  };
+  const executable = allowedApps[appId];
+  if (!executable || process.platform !== 'win32') {
+    return { ok: false, error: 'APP_NOT_SUPPORTED' };
+  }
+
+  return new Promise((resolve) => {
+    const child = spawn(executable, [], {
+      detached: true,
+      stdio: 'ignore',
+      shell: false,
+      windowsHide: false,
+    });
+    child.once('spawn', () => {
+      child.unref();
+      resolve({ ok: true });
+    });
+    child.once('error', () => resolve({ ok: false, error: 'APP_LAUNCH_FAILED' }));
+  });
+});
+
+ipcMain.handle('zara:open-external', async (event, rawUrl) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || typeof rawUrl !== 'string') {
+    return { ok: false, error: 'UNAUTHORIZED_CALLER' };
+  }
+  try {
+    const target = new URL(rawUrl);
+    if (target.protocol !== 'https:' && target.protocol !== 'http:') {
+      return { ok: false, error: 'URL_SCHEME_NOT_ALLOWED' };
+    }
+    await shell.openExternal(target.toString());
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'INVALID_URL' };
+  }
+});
 
 async function findAvailablePort() {
   return new Promise((resolve, reject) => {
