@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowRight, AudioLines, Bot, ChevronDown,
   Code2, Folder, Globe, Grid2X2, Heart, Home, Info, Keyboard, Mic,
-  MessageCircle, MessageSquare, Monitor, Paperclip, Play, Search, Send, Settings,
+  MessageCircle, MessageSquare, Paperclip, Play, Search, Send, Settings,
   ShieldCheck, Sparkles, Volume2, X, Zap,
 } from 'lucide-react';
 import heroImage from './assets/zara-hero.png';
