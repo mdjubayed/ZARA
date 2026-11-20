@@ -79,3 +79,7 @@ These are local service addresses, not hosted provider endpoints. Configure the 
 - Authentication currently supports one owner per installation, not multiple users or roles. Rate limiting is process-local; a multi-instance deployment requires shared session and rate-limit infrastructure.
 - Windows Electron packaging configuration and allowlisted Notepad/Calculator/browser launch actions are present but the installer has not yet been built or verified.
 - A manual Android APK build workflow is present but has not been executed or verified. Unrestricted desktop control, background autonomous agents, and external web research are not complete.
+
+## Web search and page reading boundary
+
+Web search is a non-AI utility and does not add another Brain provider. The frontend opens a user-confirmed public search with Safe Search enabled. A user can open a validated HTTPS page in their external browser and paste selected text into the Reader panel for the current Brain Manager to explain. Pasted page content is untrusted data and must never be treated as system instructions. The backend does not scrape arbitrary URLs or act as an open proxy.
