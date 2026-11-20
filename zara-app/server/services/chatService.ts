@@ -4,19 +4,16 @@ import {
   getMessagesByThread,
   type Message,
 } from '../db/repositories/messageRepository.js';
-
 import {
   claimChatRequest,
   completeChatRequest,
   releaseChatRequest,
 } from '../db/repositories/chatRequestRepository.js';
-
 import { getThreadById } from '../db/repositories/threadRepository.js';
 import {
   streamWithFailover,
   type BrainProviderId,
 } from './brainManager.js';
-
 import type { ChatMessage } from './providerAdapter.js';
 
 export interface SendChatMessageParams {
@@ -50,31 +47,34 @@ export async function sendChatMessage(
   const content = params.content.trim();
   const clientMessageId = params.clientMessageId.trim();
 
-  if (!threadId) {
-    throw new ChatServiceError('THREAD_ID_REQUIRED');
-  }
-
-  if (!content) {
-    throw new ChatServiceError('MESSAGE_CONTENT_REQUIRED');
-  }
-
+  if (!threadId) throw new ChatServiceError('THREAD_ID_REQUIRED');
+  if (!content) throw new ChatServiceError('MESSAGE_CONTENT_REQUIRED');
   if (!clientMessageId || clientMessageId.length > 80) {
     throw new ChatServiceError('CLIENT_MESSAGE_ID_REQUIRED');
   }
-
   if (!getThreadById(threadId)) {
     throw new ChatServiceError('THREAD_NOT_FOUND');
   }
 
-  // Claim the request BEFORE creating the user message.
-  const claim = claimChatRequest(
-    clientMessageId,
-    threadId,
-    clientMessageId,
-  );
+  // chat_requests references messages with a foreign key.
+  // Create the idempotent user message before claiming the request.
+  let userMessage: Message;
+  try {
+    userMessage = createMessage(threadId, 'user', content, clientMessageId);
+  } catch (error) {
+    if (error instanceof Error && error.message === 'MESSAGE_ID_CONFLICT') {
+      throw new ChatServiceError('CLIENT_MESSAGE_ID_CONFLICT');
+    }
+    throw error;
+  }
+
+  const claim = claimChatRequest(clientMessageId, threadId, userMessage.id);
 
   if (!claim.claimed) {
-    if (claim.record.thread_id !== threadId) {
+    if (
+      claim.record.thread_id !== threadId ||
+      claim.record.user_message_id !== userMessage.id
+    ) {
       throw new ChatServiceError('CLIENT_MESSAGE_ID_CONFLICT');
     }
 
@@ -82,19 +82,11 @@ export async function sendChatMessage(
       claim.record.status === 'completed' &&
       claim.record.assistant_message_id
     ) {
-      const userMessage = getMessageById(
-        claim.record.user_message_id,
-      );
-
       const assistantMessage = getMessageById(
         claim.record.assistant_message_id,
       );
 
-      if (
-        userMessage &&
-        assistantMessage &&
-        claim.record.provider_id
-      ) {
+      if (assistantMessage && claim.record.provider_id) {
         return {
           userMessage,
           assistantMessage,
@@ -105,32 +97,18 @@ export async function sendChatMessage(
       }
     }
 
-    throw new ChatServiceError(
-      'CHAT_REQUEST_ALREADY_IN_PROGRESS',
-    );
+    throw new ChatServiceError('CHAT_REQUEST_ALREADY_IN_PROGRESS');
   }
 
   try {
-    // Create the user message only after successfully claiming.
-    const userMessage = createMessage(
-      threadId,
-      'user',
-      content,
-      clientMessageId,
-    );
-
     const history = getMessagesByThread(threadId).slice(-21);
-
     const messages: ChatMessage[] = history.map((message) => ({
       role: message.role,
       content: message.content,
     }));
 
     const response = await streamWithFailover(
-      {
-        messages,
-        signal: params.signal,
-      },
+      { messages, signal: params.signal },
       params.providerId,
       params.onToken,
     );
