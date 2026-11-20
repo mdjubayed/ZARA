@@ -116,6 +116,10 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 - Browser-based workspace access after the user explicitly chooses a folder: list up to 200 files across three folder levels, open supported text/source files up to 500 KB, and save edits only after confirmation. No file deletion or command execution.
 - Conversation rename and deletion, with a confirmation step before deletion.
 
+## Android app
+
+A Capacitor Android shell and manual APK workflow are included. See [MOBILE.md](./MOBILE.md). The APK connects to a separately hosted HTTPS ZARA backend; first launch asks for its server address. Configure the backend CORS allowlist with `https://localhost` and use persistent storage for the SQLite database. The APK workflow has not yet been run, so no build artifact is claimed.
+
 ## Windows desktop app
 
 The repository now includes an Electron desktop shell and a manual GitHub Actions workflow for creating a Windows x64 installer. Follow [DESKTOP.md](./DESKTOP.md). The package lock must be refreshed with `npm install` after pulling the new desktop dependencies. In the packaged Windows app, provider keys can be entered in Brain Settings and are encrypted with the Windows OS-backed secure-storage service; they are never returned to the frontend API or written to SQLite. No installer artifact is claimed until the workflow successfully builds it.
