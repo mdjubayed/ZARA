@@ -9,6 +9,7 @@ import heroImage from './assets/zara-hero.png';
 import './App.css';
 import { getApiBase } from './lib/apiBase.js';
 import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
+import { isSafeWorkspaceDirectory, isSafeWorkspacePath, WORKSPACE_FILE_SIZE_LIMIT } from './lib/workspacePolicy.js';
 
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
@@ -325,8 +326,8 @@ export default function App() {
           if (collected.length >= 200) break;
           const relativePath = prefix ? prefix + '/' + name : name;
           if (handle.kind === 'file') {
-            collected.push({ path: relativePath, handle });
-          } else if (depth < 3) {
+            if (isSafeWorkspacePath(relativePath)) collected.push({ path: relativePath, handle });
+          } else if (depth < 3 && isSafeWorkspaceDirectory(relativePath)) {
             await scan(handle, relativePath, depth + 1);
           }
         }
@@ -350,11 +351,11 @@ export default function App() {
     try {
       setWorkspaceBusy(true);
       const file = await item.handle.getFile();
-      if (!/\.(txt|md|json|csv|ts|tsx|js|jsx|py|html|css|xml|log|yml|yaml|toml|sql)$/i.test(file.name)) {
-        setToast('Only supported text and source-code files can be opened.');
+      if (!isSafeWorkspacePath(item.path)) {
+        setToast('This file is hidden or sensitive and cannot be opened by the workspace editor.');
         return;
       }
-      if (file.size > 500000) {
+      if (file.size > WORKSPACE_FILE_SIZE_LIMIT) {
         setToast('This file is larger than the 500 KB editor limit.');
         return;
       }
@@ -371,7 +372,8 @@ export default function App() {
   const saveWorkspaceFile = async () => {
     const selected = workspaceFiles.find((item) => item.path === selectedWorkspacePath);
     if (!selected) return;
-    if (workspaceContent.length > 500000) { setToast('Edited content exceeds the 500 KB save limit.'); return; }
+    if (new TextEncoder().encode(workspaceContent).byteLength > WORKSPACE_FILE_SIZE_LIMIT) { setToast('Edited content exceeds the 500 KB save limit.'); return; }
+    if (!isSafeWorkspacePath(selected.path)) { setToast('This file is hidden or sensitive and cannot be edited.'); return; }
     if (!window.confirm('Save changes to ' + selected.path + '? This will overwrite the selected file.')) return;
     try {
       setWorkspaceBusy(true);
