@@ -209,8 +209,12 @@ ipcMain.handle('zara:open-text-file', async (event) => {
     if (!allowedTextExtensions.includes(extension)) return { ok: false, error: 'FILE_TYPE_NOT_ALLOWED' };
     const content = await readFile(filePath);
     if (content.byteLength > 512000) return { ok: false, error: 'FILE_TOO_LARGE' };
-    const text = content.toString('utf8');
-    if (text.includes('\\uFFFD')) return { ok: false, error: 'FILE_NOT_VALID_UTF8' };
+    let text;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(content);
+    } catch {
+      return { ok: false, error: 'FILE_NOT_VALID_UTF8' };
+    }
     return { ok: true, name: path.basename(filePath), content: text };
   } catch {
     return { ok: false, error: 'FILE_READ_FAILED' };
@@ -236,6 +240,9 @@ ipcMain.handle('zara:save-text-file', async (event, suggestedName, content) => {
       filters: [{ name: 'Text and source files', extensions: allowedTextExtensions.map((value) => value.slice(1)) }],
     });
     if (result.canceled || !result.filePath) return { ok: false, error: 'CANCELLED' };
+    if (!allowedTextExtensions.includes(path.extname(result.filePath).toLowerCase())) {
+      return { ok: false, error: 'FILE_TYPE_NOT_ALLOWED' };
+    }
     const approved = await confirmNativeAction(
       'Confirm file save',
       'Save this text file to the selected location?',
