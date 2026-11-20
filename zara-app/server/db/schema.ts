@@ -1,4 +1,21 @@
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS auth_users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS auth_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES auth_users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry ON auth_sessions(expires_at);
+
 CREATE TABLE IF NOT EXISTS threads (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL DEFAULT 'New Chat',
