@@ -112,7 +112,7 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 
 ## Implemented frontend capabilities
 
-- Bengali and English browser voice input using the browser speech-recognition API when supported.
+- Bengali and English browser voice input using the browser speech-recognition API when supported, plus a native Android SpeechRecognizer bridge with an explicit microphone permission prompt.
 - Browser speech synthesis for spoken replies to voice requests, with Bengali/English voice matching when the browser provides a suitable voice, a read-last-reply control, and stop-speaking support.
 - Conversation history with open, rename, delete, and full-text search.
 - User-managed persistent memory notes stored in the ZARA settings database and included as bounded context in later chats.
