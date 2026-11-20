@@ -494,7 +494,7 @@ export default function App() {
           <section className="coming-page">
             <div className="coming-icon"><Mic /></div>
             <h1>Talk with ZARA</h1>
-            <p>Speak in Bengali or English. Your voice is converted to text in this browser and sent to the selected ZARA Brain.</p>
+            <p>Speak in Bengali or English. Your browser converts speech to text and sends the transcript to the selected ZARA Brain. Browser speech recognition may use the browser provider's online service.</p>
             <div className="provider-select">
               <label htmlFor="voice-language">Language</label>
               <select id="voice-language" value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.target.value as 'bn-BD' | 'en-US')}>
