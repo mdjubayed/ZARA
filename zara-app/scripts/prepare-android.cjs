@@ -215,6 +215,7 @@ public class ZaraExternalBrowserPlugin extends Plugin {
     }
 
     String hostname = host.toLowerCase(java.util.Locale.ROOT);
+    if (hostname.endsWith(".")) hostname = hostname.substring(0, hostname.length() - 1);
     if (Patterns.IP_ADDRESS.matcher(hostname).matches()
         || hostname.contains(":")
         || hostname.equals("localhost")
