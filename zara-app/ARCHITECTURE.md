@@ -3,6 +3,7 @@
 ## Runtime components
 
 - React frontend: chat, provider selection, voice, history, search, saved memory, prompt tools, and browser-selected workspace files.
+- Optional Windows Electron shell: serves the same frontend and local Express API, with a sandboxed renderer and a narrow allowlisted native-action bridge.
 - Express API: request validation, conversation routes, provider status, settings, and SSE chat.
 - SQLite: threads, messages, provider state, settings, idempotency records, and FTS5 search.
 - Brain Manager: one orchestration layer for exactly two provider adapters.
@@ -67,4 +68,5 @@ These are local service addresses, not hosted provider endpoints. Configure the 
 - This repository currently provides the local-first web application foundation.
 - Browser speech recognition depends on browser support and may use the browser vendor's online service.
 - There is no account login or multi-user authorization yet. Do not expose the API as a public service.
-- Native Windows and Android packaging, unrestricted desktop control, background autonomous agents, and external web research are not complete.
+- Windows Electron packaging configuration and allowlisted Notepad/Calculator/browser launch actions are present but the installer has not yet been built or verified.
+- Android APK packaging, unrestricted desktop control, background autonomous agents, and external web research are not complete.
