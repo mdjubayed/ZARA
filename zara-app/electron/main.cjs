@@ -76,7 +76,7 @@ function parseSafeExternalUrl(rawUrl) {
   try {
     const target = new URL(rawUrl);
     if (target.protocol !== 'https:' || target.username || target.password || (target.port && target.port !== '443')) return null;
-    const hostname = target.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+    const hostname = target.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
     if (net.isIP(hostname) !== 0) return null;
     if (
       hostname === 'localhost'
