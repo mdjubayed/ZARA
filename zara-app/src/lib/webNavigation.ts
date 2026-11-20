@@ -1,10 +1,10 @@
 const SEARCH_BASE = 'https://duckduckgo.com/';
 
 const DISALLOWED_SEARCH_PATTERNS = [
-  /\\b(guns?|firearms?|ammunition|weapons?|knives|switchblades|tasers?|pepper spray)\\b/i,
-  /\\b(drugs?|narcotics?|marijuana|cannabis|weed|vapes?|nicotine|cigarettes?|alcohol)\\b/i,
-  /\\b(gambling|betting|casino|sports betting|prediction markets?)\\b/i,
-  /\\b(explosives?|bomb making|dangerous challenges?|harmful stunts?)\\b/i,
+  /\b(guns?|firearms?|ammunition|weapons?|knives|switchblades|tasers?|pepper spray)\b/i,
+  /\b(drugs?|narcotics?|marijuana|cannabis|weed|vapes?|nicotine|cigarettes?|alcohol)\b/i,
+  /\b(gambling|betting|casino|sports betting|prediction markets?)\b/i,
+  /\b(explosives?|bomb making|dangerous challenges?|harmful stunts?)\b/i,
   /(অস্ত্র|বন্দুক|গুলি|ছুরি|মাদক|গাঁজা|নেশা|ভেপ|জুয়া|জুয়া|বাজি|বিস্ফোরক|বিপজ্জনক চ্যালেঞ্জ)/i,
 ];
 
