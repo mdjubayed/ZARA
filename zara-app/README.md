@@ -92,6 +92,20 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 - Configure production CORS origins explicitly.
 - File and desktop automation features must use explicit permissions and safe workspace boundaries when implemented.
 
-## Current implementation boundaries
+## Implemented frontend capabilities
 
-Provider API calls cannot be verified until valid credentials and reachable provider services are configured privately. The UI must keep provider key and model fields blank by default. Voice, long-term memory, browser research, file operations, desktop control, and mobile/desktop packaging are separate roadmap phases and must not be presented as complete until implemented.
+- Bengali and English browser voice input using the browser speech-recognition API when supported.
+- Browser speech synthesis for spoken replies to voice requests.
+- Conversation history with open, rename, delete, and full-text search.
+- User-managed persistent memory notes stored in the ZARA settings database.
+- Reusable agent instruction templates. These prepare prompts only and do not run autonomous background actions.
+- Safe prompt tools for learning, writing, coding, and research planning.
+- Explicit text-file attachments in chat, read in the browser and limited to 500 KB per file.
+
+## Remaining platform boundaries
+
+- Browser voice recognition availability and language quality depend on the browser and operating system. Speech recognition may require browser permission and an internet connection.
+- File attachments are limited to user-selected text-based files. ZARA does not have unrestricted local disk or folder access.
+- Desktop application control, arbitrary file modification, background autonomous agents, external browser automation, advanced long-term semantic memory, and Windows/Android packaging are not implemented in this web build.
+- Provider API calls cannot be verified until valid credentials and reachable provider services are configured privately. The UI must keep provider key and model fields blank by default.
+- Do not describe a planned feature as complete until it has actually been implemented and verified.
