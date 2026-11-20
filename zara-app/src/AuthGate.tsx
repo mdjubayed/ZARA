@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 
 type AuthStatus = { setupRequired: boolean };
 type AuthResponse = { authenticated: boolean; error?: string };
@@ -15,7 +16,7 @@ async function requestAuth(path: string, password?: string): Promise<AuthRespons
   return body;
 }
 
-export default function AuthGate({ children }: { children: React.ReactNode }) {
+export default function AuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [setupRequired, setSetupRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
