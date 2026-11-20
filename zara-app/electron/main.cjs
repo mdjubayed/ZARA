@@ -122,7 +122,7 @@ ipcMain.handle('zara:save-provider-key', async (event, providerId, rawKey) => {
   const envName = providerKeyEnvironmentName(providerId);
   if (!envName || typeof rawKey !== 'string') return { ok: false, error: 'INVALID_PROVIDER' };
   const key = rawKey.trim();
-  if (!key || key.length > 4096 || /[\\r\\n\\0]/.test(key)) {
+  if (!key || key.length > 4096 || /[\r\n\0]/.test(key)) {
     return { ok: false, error: 'INVALID_API_KEY' };
   }
 
