@@ -26,6 +26,12 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    const onUnauthorized = () => setAuthenticated(false);
+    window.addEventListener('zara:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('zara:unauthorized', onUnauthorized);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     void requestAuth('status').then(async (status) => {
       if (!active) return;
