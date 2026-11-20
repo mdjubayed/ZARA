@@ -546,7 +546,7 @@ export default function App() {
         {tab === 'files' && (
           <section className="module-page">
             <div className="section-title"><h1>Workspace Files</h1><p>Choose one folder to let ZARA list, read, and edit text files inside it. ZARA cannot browse outside that folder or delete files.</p></div>
-            <div className="workspace-toolbar"><button onClick={() => void openWorkspace()} disabled={workspaceBusy}><Folder size={17} /> {workspaceHandle ? 'Choose Another Folder' : 'Choose Folder'}</button><span>{workspaceHandle ? 'Selected folder: ' + workspaceHandle.name : 'No folder selected'}</span></div>
+            <div className="workspace-toolbar"><button onClick={() => void openWorkspace()} disabled={workspaceBusy}><Folder size={17} /> {workspaceHandle ? 'Choose Another Folder' : 'Choose Folder'}</button><span>{workspaceHandle ? 'Selected folder: ' + workspaceHandle.name : 'No folder selected'}</span>{workspaceHandle && <button className="workspace-close" onClick={() => { setWorkspaceHandle(null); setWorkspaceFiles([]); setSelectedWorkspacePath(''); setWorkspaceContent(''); }}>Close Folder</button>}</div>
             {workspaceHandle && (
               <div className="workspace-layout">
                 <div className="workspace-file-list">
