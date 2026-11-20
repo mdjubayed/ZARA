@@ -49,7 +49,7 @@ Start the Vite frontend in another terminal:
 npm run dev
 ```
 
-The Vite development server proxies `/api` requests to the ZARA API on port 3002.
+The Vite development server proxies `/api` requests to the ZARA API on port 3002. The API binds to `127.0.0.1` only; do not expose or forward port 3002 directly. Keep the Vite/frontend port private as well.
 
 ## Environment configuration
 
@@ -88,7 +88,8 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 - Provider keys are read from backend environment variables only.
 - Provider credentials must never be committed to Git or returned by API responses.
 - Application settings reject secret-like field names, including nested secret fields.
-- Do not expose the backend or provider ports to an untrusted network.
+- The ZARA API binds to loopback (`127.0.0.1`) and should not be exposed or forwarded directly.
+- Do not expose provider ports to an untrusted network.
 - On database startup, unsupported legacy provider rows are removed, provider configuration blobs are cleared, and secret-like keys are scrubbed from legacy settings.
 - Configure production CORS origins explicitly.
 - File and desktop automation features must use explicit permissions and safe workspace boundaries when implemented.
