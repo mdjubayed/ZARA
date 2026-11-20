@@ -1,4 +1,5 @@
 import express from 'express';
+import type { ErrorRequestHandler } from 'express';
 import cors from 'cors';
 import { config } from './config.js';
 import { threadRouter } from './routes/threads.js';
@@ -32,3 +33,28 @@ app.use('/api/v1/search', searchRouter);
 app.get('/api/v1/health', (_req, res) => {
   res.status(200).json({ status: 'ok', service: 'zara-api', timestamp: new Date().toISOString() });
 });
+
+const apiErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (res.headersSent) return;
+
+  const requestError = error as { type?: string; message?: string };
+
+  if (requestError.type === 'entity.too.large') {
+    res.status(413).json({ error: 'REQUEST_BODY_TOO_LARGE' });
+    return;
+  }
+
+  if (requestError.type === 'entity.parse.failed') {
+    res.status(400).json({ error: 'INVALID_JSON_BODY' });
+    return;
+  }
+
+  if (requestError.message === 'CORS_ORIGIN_NOT_ALLOWED') {
+    res.status(403).json({ error: 'CORS_ORIGIN_NOT_ALLOWED' });
+    return;
+  }
+
+  res.status(500).json({ error: 'INTERNAL_SERVER_ERROR' });
+};
+
+app.use(apiErrorHandler);
