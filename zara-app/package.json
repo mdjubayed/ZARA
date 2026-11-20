@@ -11,13 +11,14 @@
     "preview": "vite preview",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
-    "build:server": "esbuild server/app.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist-server/app.cjs",
+    "build:server": "esbuild server/app.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist-server/app.cjs && esbuild server/index.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist-server/index.cjs",
     "desktop:dev": "electron . --dev",
     "desktop:pack": "npm run build && electron-builder --dir",
     "desktop:dist": "npm run build && electron-builder --win nsis --x64",
     "mobile:sync": "npm run build:mobile && cap sync android",
     "mobile:open": "cap open android",
-    "build:mobile": "npm run build:server && tsc -b && vite build --mode mobile"
+    "build:mobile": "npm run build:server && tsc -b && vite build --mode mobile",
+    "start:prod": "node dist-server/index.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.2.0",
