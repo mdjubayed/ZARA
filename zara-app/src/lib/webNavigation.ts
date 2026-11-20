@@ -51,7 +51,7 @@ export function validateWebPageUrl(rawUrl: string): WebPageUrlValidation {
     return { ok: false, error: 'For safety, ZARA only opens HTTPS websites.' };
   }
   if (parsed.username || parsed.password || (parsed.port && parsed.port !== '443')) {
-    return { ok: false, error: 'Website addresses containing usernames or passwords are not allowed.' };
+    return { ok: false, error: 'Credentials and nonstandard ports are not allowed in website addresses.' };
   }
 
   const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
