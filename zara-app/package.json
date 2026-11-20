@@ -15,10 +15,11 @@
     "desktop:dev": "electron . --dev",
     "desktop:pack": "npm run build && electron-builder --dir",
     "desktop:dist": "npm run build && electron-builder --win nsis --x64",
-    "mobile:sync": "npm run build:mobile && cap sync android",
+    "mobile:sync": "npm run build:mobile && npm run mobile:prepare && cap sync android",
     "mobile:open": "cap open android",
     "build:mobile": "npm run build:server && tsc -b && vite build --mode mobile",
-    "start:prod": "node dist-server/index.cjs"
+    "start:prod": "node dist-server/index.cjs",
+    "mobile:prepare": "node scripts/prepare-android.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.2.0",
