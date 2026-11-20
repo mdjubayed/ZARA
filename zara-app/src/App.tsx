@@ -61,6 +61,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
   });
   const body = await response.json().catch(() => ({}));
+  if (response.status === 401) window.dispatchEvent(new Event('zara:unauthorized'));
   if (!response.ok) throw new Error(body.error || `HTTP_${response.status}`);
   return body as T;
 }
@@ -193,6 +194,7 @@ export default function App() {
         body: JSON.stringify({ threadId, content, clientMessageId, providerId: selectedProvider }),
         signal: controller.signal,
       });
+      if (response.status === 401) window.dispatchEvent(new Event('zara:unauthorized'));
       if (!response.ok || !response.body) {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || `HTTP_${response.status}`);
