@@ -224,6 +224,11 @@ public class ZaraExternalBrowserPlugin extends Plugin {
         || hostname.endsWith(".internal")
         || hostname.endsWith(".test")
         || hostname.endsWith(".invalid")
+        || hostname.endsWith(".lan")
+        || hostname.endsWith(".corp")
+        || hostname.endsWith(".intranet")
+        || hostname.endsWith(".localdomain")
+        || hostname.endsWith(".home.arpa")
         || !hostname.contains(".")) {
       call.reject("EXTERNAL_URL_NOT_ALLOWED");
       return;
