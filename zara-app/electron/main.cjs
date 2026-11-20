@@ -75,7 +75,7 @@ function parseSafeExternalUrl(rawUrl) {
   if (typeof rawUrl !== 'string' || rawUrl.length > 2048) return null;
   try {
     const target = new URL(rawUrl);
-    if (target.protocol !== 'https:' || target.username || target.password) return null;
+    if (target.protocol !== 'https:' || target.username || target.password || (target.port && target.port !== '443')) return null;
     const hostname = target.hostname.toLowerCase().replace(/^\[|\]$/g, '');
     if (net.isIP(hostname) !== 0) return null;
     if (
@@ -85,6 +85,11 @@ function parseSafeExternalUrl(rawUrl) {
       || hostname.endsWith('.internal')
       || hostname.endsWith('.test')
       || hostname.endsWith('.invalid')
+      || hostname.endsWith('.lan')
+      || hostname.endsWith('.corp')
+      || hostname.endsWith('.intranet')
+      || hostname.endsWith('.localdomain')
+      || hostname.endsWith('.home.arpa')
       || !hostname.includes('.')
     ) return null;
     target.hash = '';
