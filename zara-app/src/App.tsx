@@ -59,7 +59,9 @@ export default function App() {
   useEffect(() => {
     let active = true;
     api('/health').then(() => { if (active) setOnline(true); }).catch(() => { if (active) setOnline(false); });
-    refreshProviders();
+    api<{ providers: Provider[] }>('/providers')
+      .then((result) => { if (active) setProviders(result.providers); })
+      .catch(() => { if (active) setProviders([]); });
     api<{ threads: Array<{ id: string }> }>('/threads')
       .then(async ({ threads }) => {
         if (!active) return;
