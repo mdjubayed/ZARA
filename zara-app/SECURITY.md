@@ -2,7 +2,7 @@
 
 ## Provider credentials
 
-- OmniRoute and FreeLLMAPI credentials are read only from backend environment variables.
+- OmniRoute and FreeLLMAPI credentials are read from backend environment variables or the packaged Windows desktop secure-storage bridge.
 - The frontend never receives provider credentials.
 - Provider secrets must not be stored in SQLite settings or provider configuration records.
 - The packaged Windows desktop app stores provider keys in a separate encrypted file using Electron `safeStorage` with Windows DPAPI. The renderer never reads the saved key back; it receives only configured/not-configured status.
@@ -16,6 +16,16 @@
 - In development, the Vite server proxies `/api` requests to the loopback API.
 - Do not expose or forward the API port or provider ports to untrusted networks.
 - Production deployments must use a trusted reverse proxy, HTTPS, and an explicit CORS allowlist.
+
+## Account authentication
+
+- Each private installation has one owner account, created once during first-run setup.
+- Owner passwords are stored as salted scrypt hashes. Passwords are never stored in plaintext.
+- Sessions use random HttpOnly, SameSite=Strict cookies; HTTPS deployments set the Secure cookie attribute.
+- SQLite stores only SHA-256 hashes of session tokens and their expiry timestamps.
+- All application data, chat, search, settings, and provider routes require an active owner session. Health and authentication lifecycle endpoints are public.
+- Login/setup attempts are rate-limited per process and client IP. This is not sufficient for a multi-instance public deployment; shared rate limiting and session controls would be required.
+- See [AUTHENTICATION.md](./AUTHENTICATION.md) for setup and deployment constraints.
 
 ## User data
 
@@ -34,7 +44,7 @@
 
 ## Current security boundary
 
-This is a local-first web application foundation, not a multi-user internet service. It does not yet include account login or multi-user authorization. Keep the backend loopback-only and do not deploy it as a public service without adding authentication, authorization, rate limiting, and deployment-specific secret management.
+ZARA now includes single-owner authentication, but it is not a multi-user internet service. Keep the backend loopback-only unless it is deployed behind HTTPS, a trusted reverse proxy, an explicit CORS allowlist, and appropriate operational controls. Multi-user roles, shared rate limiting, password recovery, and deployment-specific monitoring are not implemented.
 
 ## Reporting
 
