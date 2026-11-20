@@ -71,6 +71,29 @@ async function confirmNativeAction(title, message, detail, confirmLabel) {
   return result.response === 1;
 }
 
+function parseSafeExternalUrl(rawUrl) {
+  if (typeof rawUrl !== 'string' || rawUrl.length > 2048) return null;
+  try {
+    const target = new URL(rawUrl);
+    if (target.protocol !== 'https:' || target.username || target.password) return null;
+    const hostname = target.hostname.toLowerCase().replace(/^\\[|\\]$/g, '');
+    if (net.isIP(hostname) !== 0) return null;
+    if (
+      hostname === 'localhost'
+      || hostname.endsWith('.localhost')
+      || hostname.endsWith('.local')
+      || hostname.endsWith('.internal')
+      || hostname.endsWith('.test')
+      || hostname.endsWith('.invalid')
+      || !hostname.includes('.')
+    ) return null;
+    target.hash = '';
+    return target;
+  } catch {
+    return null;
+  }
+}
+
 function providerKeyEnvironmentName(providerId) {
   return providerId === 'omniroute'
     ? 'OMNIROUTE_API_KEY'
@@ -300,11 +323,9 @@ ipcMain.handle('zara:open-external', async (event, rawUrl) => {
   if (!mainWindow || event.sender !== mainWindow.webContents || typeof rawUrl !== 'string') {
     return { ok: false, error: 'UNAUTHORIZED_CALLER' };
   }
+  const target = parseSafeExternalUrl(rawUrl);
+  if (!target) return { ok: false, error: 'URL_NOT_ALLOWED' };
   try {
-    const target = new URL(rawUrl);
-    if (target.protocol !== 'https:' && target.protocol !== 'http:') {
-      return { ok: false, error: 'URL_SCHEME_NOT_ALLOWED' };
-    }
     const approved = await confirmNativeAction(
       'Open external website',
       `Open ${target.hostname} in your default browser?`,
@@ -315,7 +336,7 @@ ipcMain.handle('zara:open-external', async (event, rawUrl) => {
     await shell.openExternal(target.toString());
     return { ok: true };
   } catch {
-    return { ok: false, error: 'INVALID_URL' };
+    return { ok: false, error: 'EXTERNAL_BROWSER_FAILED' };
   }
 });
 
@@ -397,13 +418,17 @@ async function createMainWindow() {
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const target = new URL(url);
-      if (target.protocol === 'https:' || target.protocol === 'http:') {
-        void shell.openExternal(target.toString());
-      }
-    } catch {
-      // Invalid external URLs are ignored.
+    const target = parseSafeExternalUrl(url);
+    if (target) {
+      void confirmNativeAction(
+        'Open external website',
+        `Open ${target.hostname} in your default browser?`,
+        'The website will open outside ZARA.',
+        'Open website',
+      ).then((approved) => {
+        if (approved) return shell.openExternal(target.toString());
+        return undefined;
+      }).catch(() => undefined);
     }
     return { action: 'deny' };
   });
