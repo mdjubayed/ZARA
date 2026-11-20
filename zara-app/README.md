@@ -118,6 +118,7 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 - User-managed persistent memory notes stored in the ZARA settings database and included as bounded context in later chats.
 - Reusable agent instruction templates. These prepare prompts only and do not run autonomous background actions.
 - Safe prompt tools for learning, writing, coding, and research planning.
+- Web Search & Reader opens DuckDuckGo with Safe Search enabled and opens user-entered HTTPS pages in the external browser only after confirmation. It does not scrape pages, download content, sign in, or execute website code; users can paste selected page text into Chat for explanation.
 - Explicit text-file attachments in chat, read in the browser and limited to 80 KB per file.
 - Browser-based workspace access after the user explicitly chooses a folder: list up to 200 supported text/source files across three folder levels, open files up to 500 KB, and save edits only after confirmation. Hidden paths, common secret/credential filenames, dependency folders, and build outputs are excluded. No file deletion or command execution.
 - Windows desktop file dialogs can open one user-selected UTF-8 text/source file up to 500 KB and save text using a user-selected Save As path with a separate confirmation. No file deletion or unrestricted drive browsing.
