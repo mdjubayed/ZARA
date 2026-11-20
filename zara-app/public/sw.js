@@ -1,5 +1,5 @@
 const CACHE_NAME = 'zara-shell-v1';
-const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg'];
+const APP_SHELL = ['/', '/manifest.webmanifest', '/favicon.svg', '/zara-pwa.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
