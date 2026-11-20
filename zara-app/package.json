@@ -15,8 +15,9 @@
     "desktop:dev": "electron . --dev",
     "desktop:pack": "npm run build && electron-builder --dir",
     "desktop:dist": "npm run build && electron-builder --win nsis --x64",
-    "mobile:sync": "npm run build && cap sync android",
-    "mobile:open": "cap open android"
+    "mobile:sync": "npm run build:mobile && cap sync android",
+    "mobile:open": "cap open android",
+    "build:mobile": "npm run build:server && tsc -b && vite build --mode mobile"
   },
   "dependencies": {
     "better-sqlite3": "^13.2.0",
