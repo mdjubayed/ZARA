@@ -16,6 +16,11 @@ try {
   assert.equal(hasProviderApiKey('omniroute'), false);
   assert.equal(hasProviderApiKey('freellmapi'), false);
 
+  process.env.OMNIROUTE_API_KEY = '   ';
+  assert.equal(getProviderApiKey('omniroute'), undefined);
+  assert.equal(hasProviderApiKey('omniroute'), false);
+  delete process.env.OMNIROUTE_API_KEY;
+
   process.env.OMNIROUTE_API_KEY = 'test-omniroute-secret';
 
   assert.equal(
