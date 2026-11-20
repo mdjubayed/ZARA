@@ -42,7 +42,7 @@ To generate and sync it locally:
 ```bash
 npm install
 npm run build:mobile
-npx cap add android
+npm run mobile:prepare
 npx cap sync android
 ```
 
