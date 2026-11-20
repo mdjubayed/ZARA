@@ -65,7 +65,7 @@ These are local service addresses, not hosted provider endpoints. Configure the 
 
 ## Data and permissions
 
-- Provider credentials are read only from backend environment variables. Model IDs are non-secret and may be selected in the Settings screen.
+- Provider credentials are read from private backend environment variables or, in the packaged Windows desktop app, Electron safeStorage. Model IDs are non-secret and may be selected in the Settings screen.
 - The database startup migration removes unsupported provider rows, clears provider config JSON, and scrubs secret-like legacy settings.
 - The backend listens on loopback only; the Vite dev server proxies `/api` requests.
 - Saved memory is user-entered, bounded, and added to chat as context; it is not treated as a system instruction.
@@ -75,7 +75,7 @@ These are local service addresses, not hosted provider endpoints. Configure the 
 ## Known boundaries
 
 - This repository currently provides the local-first web application foundation.
-- Browser speech recognition depends on browser support and may use the browser vendor's online service.
+- Browser speech recognition depends on browser support and may use the browser vendor's online service. Speech synthesis selects a matching Bengali/English system voice when available and otherwise relies on browser fallback behavior.
 - Authentication currently supports one owner per installation, not multiple users or roles. Rate limiting is process-local; a multi-instance deployment requires shared session and rate-limit infrastructure.
 - Windows Electron packaging configuration and allowlisted Notepad/Calculator/browser launch actions are present but the installer has not yet been built or verified.
-- Android APK packaging, unrestricted desktop control, background autonomous agents, and external web research are not complete.
+- A manual Android APK build workflow is present but has not been executed or verified. Unrestricted desktop control, background autonomous agents, and external web research are not complete.
