@@ -38,10 +38,11 @@ Open the repository's Actions tab, choose **Build ZARA Windows Installer**, and 
 - The local API binds only to 127.0.0.1 on an available port.
 - The SQLite database is stored in the current Windows user's Electron application data directory.
 - The application does not grant unrestricted shell or filesystem access to the renderer.
+- The only native app launch actions currently exposed are Notepad and Calculator. Each requires a confirmation dialog; arbitrary commands and app-closing actions are not exposed.
 - External HTTP(S) links open in the system browser; the app window cannot navigate away from its local origin.
 - Provider keys remain blank by default and are not bundled into the installer.
 - Do not expose the desktop app's local API port to another device or network.
 
 ## Current limitations
 
-This first desktop wrapper packages the existing web assistant and local API. It does not yet provide native Windows automation, a Windows Credential Manager integration, a native microphone pipeline, or a signed installer. Those features require separate implementation and permission controls. Provider network requests still require privately configured credentials and reachable provider endpoints.
+This first desktop wrapper packages the existing web assistant and local API. It provides only confirmed Notepad/Calculator launching and default-browser opening. It does not yet provide general Windows automation, a Windows Credential Manager integration, a native microphone pipeline, or a signed installer. Those features require separate implementation and permission controls. Provider network requests still require privately configured credentials and reachable provider endpoints.
