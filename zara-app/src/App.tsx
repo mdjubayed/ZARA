@@ -398,7 +398,7 @@ export default function App() {
       setWorkspaceBusy(true);
       const result = await desktop.openTextFile();
       if (!result.ok) {
-        setToast(result.error === 'CANCELLED' ? 'File selection cancelled.' : result.error === 'FILE_TOO_LARGE' ? 'The selected file exceeds the 500 KB limit.' : 'Could not open the selected text file.');
+        setToast(result.error === 'CANCELLED' ? 'File selection cancelled.' : result.error === 'FILE_TOO_LARGE' ? 'The selected file exceeds the 500 KB limit.' : result.error === 'SENSITIVE_FILE_NOT_ALLOWED' ? 'Hidden or sensitive files cannot be opened in ZARA.' : 'Could not open the selected text file.');
         return;
       }
       setDesktopFileName(result.name ?? 'opened-file.txt');
