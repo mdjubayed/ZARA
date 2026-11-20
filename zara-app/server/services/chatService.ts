@@ -123,7 +123,7 @@ export async function sendChatMessage(
   try {
     const currentThread = getThreadById(threadId);
     if (currentThread?.title === 'New Chat') {
-      updateThreadTitle(threadId, content.replace(/\\s+/g, ' ').slice(0, 60));
+      updateThreadTitle(threadId, content.replace(/\s+/g, ' ').slice(0, 60));
     }
 
     const history = getMessagesByThread(threadId).slice(-21);
