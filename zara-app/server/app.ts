@@ -1,6 +1,7 @@
 import express from 'express';
 import type { ErrorRequestHandler } from 'express';
 import cors from 'cors';
+import path from 'node:path';
 import { config } from './config.js';
 import { authRouter } from './routes/auth.js';
 import { requireAuth } from './middleware/requireAuth.js';
@@ -14,7 +15,7 @@ import searchRouter from './routes/search.js';
 export const app = express();
 app.disable('x-powered-by');
 
-app.use(cors({
+const corsMiddleware = cors({
   credentials: true,
   origin(origin, callback) {
     if (!origin) return callback(null, true);
@@ -24,7 +25,25 @@ app.use(cors({
     if (isAllowed) return callback(null, true);
     return callback(new Error('CORS_ORIGIN_NOT_ALLOWED'));
   },
-}));
+});
+
+// Same-origin requests do not need CORS. Cross-origin Android requests still
+// pass through the exact-origin allowlist above.
+app.use((req, res, next) => {
+  const origin = req.get('origin');
+  const requestHost = req.get('host');
+  if (origin && requestHost) {
+    try {
+      if (new URL(origin).host === requestHost) {
+        next();
+        return;
+      }
+    } catch {
+      // Invalid origins are rejected by the CORS middleware below.
+    }
+  }
+  corsMiddleware(req, res, next);
+});
 
 app.use(express.json({ limit: '1mb' }));
 
@@ -42,6 +61,20 @@ app.use('/api/v1/settings', settingsRouter);
 app.use('/api/v1/providers', providerRouter);
 app.use('/api/v1/chat', chatRouter);
 app.use('/api/v1/search', searchRouter);
+
+if (config.serveFrontend) {
+  const frontendDirectory = path.resolve(process.env.ZARA_FRONTEND_DIR || path.join(process.cwd(), 'dist'));
+  app.use(express.static(frontendDirectory, { index: false }));
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api/')) {
+      next();
+      return;
+    }
+    res.sendFile(path.join(frontendDirectory, 'index.html'), (error) => {
+      if (error) next(error);
+    });
+  });
+}
 
 const apiErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
   if (res.headersSent) return;
