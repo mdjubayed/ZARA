@@ -32,7 +32,7 @@
 
 - Conversation history and user-saved memories are stored in the local SQLite database.
 - Saved memory notes are included in later provider requests as bounded context. Users can review and delete saved notes in the Memory screen.
-- Browser speech recognition may process audio using the browser vendor's online service. The app sends the resulting transcript to the selected AI provider. Browser speech synthesis reads replies using locally available browser/operating-system voices; voice availability varies by device.
+- Browser speech recognition may process audio using the browser vendor's online service. Android voice input uses the operating system's SpeechRecognizer service, which may stream audio to remote servers. Android microphone permission is requested only after the user starts voice input; recognition is not always-on. The app sends the resulting transcript to the selected AI provider. Browser speech synthesis reads replies using locally available browser/operating-system voices; voice availability varies by device.
 
 ## Workspace file access
 
