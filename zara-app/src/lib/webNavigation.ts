@@ -1,8 +1,23 @@
 const SEARCH_BASE = 'https://duckduckgo.com/';
 
+const DISALLOWED_SEARCH_PATTERNS = [
+  /\\b(guns?|firearms?|ammunition|weapons?|knives|switchblades|tasers?|pepper spray)\\b/i,
+  /\\b(drugs?|narcotics?|marijuana|cannabis|weed|vapes?|nicotine|cigarettes?|alcohol)\\b/i,
+  /\\b(gambling|betting|casino|sports betting|prediction markets?)\\b/i,
+  /\\b(explosives?|bomb making|dangerous challenges?|harmful stunts?)\\b/i,
+  /(অস্ত্র|বন্দুক|গুলি|ছুরি|মাদক|গাঁজা|নেশা|ভেপ|জুয়া|জুয়া|বাজি|বিস্ফোরক|বিপজ্জনক চ্যালেঞ্জ)/i,
+];
+
+export function isAllowedWebSearchQuery(query: string): boolean {
+  const normalized = query.trim();
+  return Boolean(normalized)
+    && normalized.length <= 300
+    && !DISALLOWED_SEARCH_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export function buildWebSearchUrl(query: string): string {
   const normalized = query.trim();
-  if (!normalized || normalized.length > 300) {
+  if (!isAllowedWebSearchQuery(normalized)) {
     throw new Error('INVALID_WEB_SEARCH_QUERY');
   }
   const url = new URL(SEARCH_BASE);
