@@ -93,6 +93,7 @@ export default function App() {
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileItem[]>([]);
   const [selectedWorkspacePath, setSelectedWorkspacePath] = useState('');
   const [workspaceContent, setWorkspaceContent] = useState('');
+  const [desktopFileName, setDesktopFileName] = useState('');
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -380,6 +381,44 @@ export default function App() {
       setToast('File saved successfully.');
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Could not save file');
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const openDesktopTextFile = async () => {
+    const desktop = window.zaraDesktop;
+    if (!desktop?.isDesktop) {
+      setToast('Native file dialogs are available in the Windows desktop app. Browser folder access is available above.');
+      return;
+    }
+    try {
+      setWorkspaceBusy(true);
+      const result = await desktop.openTextFile();
+      if (!result.ok) {
+        setToast(result.error === 'CANCELLED' ? 'File selection cancelled.' : result.error === 'FILE_TOO_LARGE' ? 'The selected file exceeds the 500 KB limit.' : 'Could not open the selected text file.');
+        return;
+      }
+      setDesktopFileName(result.name ?? 'opened-file.txt');
+      setSelectedWorkspacePath('');
+      setWorkspaceContent(result.content ?? '');
+      setToast('Opened ' + (result.name ?? 'text file') + '. Review changes before saving.');
+    } catch {
+      setToast('Could not open the selected text file.');
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const saveDesktopTextFile = async () => {
+    const desktop = window.zaraDesktop;
+    if (!desktop?.isDesktop) return;
+    try {
+      setWorkspaceBusy(true);
+      const result = await desktop.saveTextFile(desktopFileName || 'zara-note.txt', workspaceContent);
+      setToast(result.ok ? 'Saved ' + (result.name ?? 'text file') + '.' : result.error === 'CANCELLED' ? 'File save cancelled.' : result.error === 'INVALID_OR_LARGE_CONTENT' ? 'Text exceeds the 500 KB save limit.' : 'Could not save the text file.');
+    } catch {
+      setToast('Could not save the text file.');
     } finally {
       setWorkspaceBusy(false);
     }
@@ -783,6 +822,7 @@ export default function App() {
         {tab === 'files' && (
           <section className="module-page">
             <div className="section-title"><h1>Workspace Files</h1><p>Choose one folder to let ZARA list, read, and edit text files inside it. ZARA cannot browse outside that folder or delete files.</p></div>
+            {window.zaraDesktop?.isDesktop && <div className="desktop-actions"><h2>Windows File Dialog</h2><p>Open one text or source file using the Windows file picker, then save a copy to a location you choose. ZARA cannot delete files or browse your whole drive.</p><div className="desktop-action-buttons"><button onClick={() => void openDesktopTextFile()} disabled={workspaceBusy}>Open Text File</button><button onClick={() => void saveDesktopTextFile()} disabled={workspaceBusy || !workspaceContent}>Save As…</button></div>{desktopFileName && <small>Selected document: {desktopFileName}</small>}</div>}
             <div className="workspace-toolbar"><button onClick={() => void openWorkspace()} disabled={workspaceBusy}><Folder size={17} /> {workspaceHandle ? 'Choose Another Folder' : 'Choose Folder'}</button><span>{workspaceHandle ? 'Selected folder: ' + workspaceHandle.name : 'No folder selected'}</span>{workspaceHandle && <button className="workspace-close" onClick={() => { setWorkspaceHandle(null); setWorkspaceFiles([]); setSelectedWorkspacePath(''); setWorkspaceContent(''); }}>Close Folder</button>}</div>
             {workspaceHandle && (
               <div className="workspace-layout">
