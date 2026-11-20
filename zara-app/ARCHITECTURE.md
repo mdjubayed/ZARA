@@ -75,7 +75,7 @@ These are local service addresses, not hosted provider endpoints. Configure the 
 ## Known boundaries
 
 - This repository currently provides the local-first web application foundation.
-- Browser speech recognition depends on browser support and may use the browser vendor's online service. Speech synthesis selects a matching Bengali/English system voice when available and otherwise relies on browser fallback behavior.
+- Web voice input uses browser speech recognition. Android uses a custom Capacitor plugin backed by the Android SpeechRecognizer API, with runtime microphone permission and a single user-started recognition session. Android's recognition service may send audio to remote servers. Speech synthesis selects a matching Bengali/English system voice when available and otherwise relies on browser fallback behavior.
 - Authentication currently supports one owner per installation, not multiple users or roles. Rate limiting is process-local; a multi-instance deployment requires shared session and rate-limit infrastructure.
 - Windows Electron packaging configuration and allowlisted Notepad/Calculator/browser launch actions are present but the installer has not yet been built or verified.
 - A manual Android APK build workflow is present but has not been executed or verified. Unrestricted desktop control, background autonomous agents, and external web research are not complete.
