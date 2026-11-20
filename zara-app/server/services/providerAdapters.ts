@@ -2,6 +2,7 @@ import { config } from '../config.js';
 import { OpenAICompatibleAdapter } from './openAICompatibleAdapter.js';
 import { registerProviderAdapter } from './providerRegistry.js';
 import { getProviderApiKey } from './secretStore.js';
+import { getProviderModel } from './providerConfig.js';
 
 let initialized = false;
 
@@ -12,7 +13,7 @@ export function initializeProviderAdapters(): void {
     providerId: 'omniroute',
     baseUrl: config.omniRouteBaseUrl,
     apiKey: () => getProviderApiKey('omniroute'),
-    defaultModel: () => process.env.OMNIROUTE_MODEL,
+    defaultModel: () => getProviderModel('omniroute'),
     timeoutMs: config.providerTimeoutMs,
   }));
 
@@ -20,7 +21,7 @@ export function initializeProviderAdapters(): void {
     providerId: 'freellmapi',
     baseUrl: config.freeLlmApiBaseUrl,
     apiKey: () => getProviderApiKey('freellmapi'),
-    defaultModel: () => process.env.FREELLMAPI_MODEL,
+    defaultModel: () => getProviderModel('freellmapi'),
     timeoutMs: config.providerTimeoutMs,
   }));
 
