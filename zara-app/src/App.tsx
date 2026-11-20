@@ -257,7 +257,7 @@ export default function App() {
     try {
       setWorkspaceBusy(true);
       const file = await item.handle.getFile();
-      if (!/\\.(txt|md|json|csv|ts|tsx|js|jsx|py|html|css|xml|log|yml|yaml|toml|sql)$/i.test(file.name)) {
+      if (!/\.(txt|md|json|csv|ts|tsx|js|jsx|py|html|css|xml|log|yml|yaml|toml|sql)$/i.test(file.name)) {
         setToast('Only supported text and source-code files can be opened.');
         return;
       }
