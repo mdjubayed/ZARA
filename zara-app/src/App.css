@@ -84,3 +84,7 @@
 .provider-key-control button{padding:8px 11px;border:1px solid #6255ed;border-radius:8px;background:#21175b;color:#fff;font-size:11px}
 .provider-key-control button:disabled{opacity:.4;cursor:not-allowed}
 .provider-key-control small{color:#8793be;font-size:10px;line-height:1.5}
+
+.voice-speech-controls{display:flex;justify-content:center;gap:10px;margin-top:12px}
+.voice-speech-controls button{display:flex;align-items:center;gap:8px;padding:10px 15px;border:1px solid #6255ed;border-radius:10px;background:#101b48;color:#fff;font-size:12px}
+.voice-speech-controls button:disabled{opacity:.45;cursor:not-allowed}
