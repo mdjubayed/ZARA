@@ -7,7 +7,7 @@ const { createServer } = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
 
-const isDevelopment = process.argv.includes('--dev') || !app.isPackaged;
+const isDevelopment = !app.isPackaged;
 let mainWindow = null;
 let apiServer = null;
 let localOrigin = '';
