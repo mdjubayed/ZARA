@@ -128,7 +128,7 @@ A Capacitor Android shell and manual APK workflow are included. See [MOBILE.md](
 
 ## Windows desktop app
 
-The repository now includes an Electron desktop shell and a manual GitHub Actions workflow for creating a Windows x64 installer. Follow [DESKTOP.md](./DESKTOP.md). The package lock must be refreshed with `npm install` after pulling the new desktop dependencies. In the packaged Windows app, provider keys can be entered in Brain Settings and are encrypted with the Windows OS-backed secure-storage service; they are never returned to the frontend API or written to SQLite. No installer artifact is claimed until the workflow successfully builds it.
+The repository now includes an Electron desktop shell and a manual GitHub Actions workflow for creating a Windows x64 installer. Follow [DESKTOP.md](./DESKTOP.md). The package lock must be refreshed with `npm install` after pulling the new desktop and mobile dependencies. In the packaged Windows app, provider keys can be entered in Brain Settings and are encrypted with the Windows OS-backed secure-storage service; they are never returned to the frontend API or written to SQLite. No installer artifact is claimed until the workflow successfully builds it.
 
 ## Installing the web app
 
