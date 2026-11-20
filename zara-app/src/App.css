@@ -50,3 +50,5 @@
 .workspace-editor button.secondary-button{background:#101b48;border-color:#3c4c9a}
 .workspace-safety{margin-top:13px;line-height:1.6}
 @media(max-width:850px){.workspace-layout{grid-template-columns:1fr}.workspace-file-list{max-height:220px;overflow:auto}.workspace-editor textarea{min-height:220px}}
+
+.workspace-toolbar button.workspace-close{background:#101b48;border-color:#3c4c9a}
