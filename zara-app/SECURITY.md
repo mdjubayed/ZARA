@@ -15,7 +15,8 @@
 - The ZARA API listens on `127.0.0.1` only.
 - In development, the Vite server proxies `/api` requests to the loopback API.
 - Do not expose or forward the API port or provider ports to untrusted networks.
-- Production deployments must use a trusted reverse proxy, HTTPS, and an explicit CORS allowlist.
+- Production deployments must use a trusted reverse proxy and HTTPS. Same-origin frontend/API requests are accepted without CORS; cross-origin Android requests require the exact `https://localhost` origin in the CORS allowlist.
+- The included Docker Compose configuration binds the service to loopback and stores SQLite in a persistent volume. Do not publish the backend port directly.
 
 ## Account authentication
 
