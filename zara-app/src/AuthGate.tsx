@@ -12,7 +12,7 @@ async function requestAuth(path: string, password?: string): Promise<AuthRespons
     method: path === 'status' || path === 'me' ? 'GET' : 'POST',
     headers: password === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: password === undefined ? undefined : JSON.stringify({ password }),
-    credentials: 'same-origin',
+    credentials: 'include',
   });
   const body = await response.json().catch(() => ({})) as AuthResponse & AuthStatus;
   if (!response.ok) throw new Error(body.error || 'AUTHENTICATION_FAILED');
@@ -40,6 +40,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isMobileBuild() && !getApiBase()) {
+      setLoading(false);
+      return;
+    }
     let active = true;
     void requestAuth('status').then(async (status) => {
       if (!active) return;
