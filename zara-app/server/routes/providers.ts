@@ -25,6 +25,7 @@ function serializeProvider(provider: Provider) {
     enabled: provider.enabled,
     created_at: provider.created_at,
     updated_at: provider.updated_at,
+    model: isSupportedProviderId(provider.id) ? getProviderModel(provider.id) ?? '' : '',
   };
 }
 
