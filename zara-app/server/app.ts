@@ -14,7 +14,10 @@ app.disable('x-powered-by');
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      if (config.nodeEnv === 'test') return callback(null, true);
+      return callback(new Error('CORS_ORIGIN_REQUIRED'));
+    }
     const isLocalOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
     const isCodespacesOrigin = /^https:\/\/[a-zA-Z0-9-]+\.app\.github\.dev$/.test(origin);
     const isAllowed = config.corsOrigins.includes(origin) || (!config.isProduction && (isLocalOrigin || isCodespacesOrigin));
@@ -49,8 +52,8 @@ const apiErrorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
-  if (requestError.message === 'CORS_ORIGIN_NOT_ALLOWED') {
-    res.status(403).json({ error: 'CORS_ORIGIN_NOT_ALLOWED' });
+  if (requestError.message === 'CORS_ORIGIN_NOT_ALLOWED' || requestError.message === 'CORS_ORIGIN_REQUIRED') {
+    res.status(403).json({ error: requestError.message });
     return;
   }
 
