@@ -1,0 +1,8 @@
+{
+  "appId": "com.zara.assistant",
+  "appName": "ZARA AI",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
