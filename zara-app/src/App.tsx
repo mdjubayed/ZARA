@@ -373,12 +373,13 @@ export default function App() {
       setToast('This action is available in the installed Windows desktop app.');
       return;
     }
-    if (!window.confirm(`Allow ZARA to open ${label}?`)) return;
     try {
       const result = await desktop.launchApp(appId);
-      setToast(result.ok ? `${label} opened.` : result.error === 'APP_NOT_SUPPORTED'
-        ? 'This app is available only on Windows.'
-        : 'ZARA could not open that app.');
+      setToast(result.ok ? `${label} opened.` : result.error === 'CANCELLED'
+        ? 'Action cancelled.'
+        : result.error === 'APP_NOT_SUPPORTED'
+          ? 'This app is available only on Windows.'
+          : 'ZARA could not open that app.');
     } catch {
       setToast('The desktop action could not be completed.');
     }
@@ -390,10 +391,9 @@ export default function App() {
       setToast('Open the ZARA Windows desktop app to use this action.');
       return;
     }
-    if (!window.confirm('Allow ZARA to open the default browser?')) return;
     try {
       const result = await desktop.openExternal('https://www.google.com');
-      setToast(result.ok ? 'Default browser opened.' : 'Could not open the default browser.');
+      setToast(result.ok ? 'Default browser opened.' : result.error === 'CANCELLED' ? 'Action cancelled.' : 'Could not open the default browser.');
     } catch {
       setToast('Could not open the default browser.');
     }
@@ -481,11 +481,10 @@ export default function App() {
     const key = providerKeyDrafts[id].trim();
     const desktop = window.zaraDesktop;
     if (!desktop || !secureKeyStorageAvailable || !key) return;
-    if (!window.confirm(`Save the ${id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'} key in Windows encrypted storage?`)) return;
     try {
       const result = await desktop.saveProviderKey(id, key);
       if (!result.ok) {
-        setToast('The key could not be stored securely. No key was saved.');
+        setToast(result.error === 'CANCELLED' ? 'No changes were made.' : 'The key could not be stored securely. No key was saved.');
         return;
       }
       setProviderKeyDrafts((current) => ({ ...current, [id]: '' }));
@@ -500,11 +499,10 @@ export default function App() {
   const clearProviderKey = async (id: ProviderId) => {
     const desktop = window.zaraDesktop;
     if (!desktop || !secureKeyStorageAvailable) return;
-    if (!window.confirm(`Remove the saved ${id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'} key from this Windows account?`)) return;
     try {
       const result = await desktop.clearProviderKey(id);
       if (!result.ok) {
-        setToast('The saved key could not be removed.');
+        setToast(result.error === 'CANCELLED' ? 'No changes were made.' : 'The saved key could not be removed.');
         return;
       }
       setProviderKeyStored((current) => ({ ...current, [id]: false }));
