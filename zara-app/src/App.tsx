@@ -96,6 +96,7 @@ export default function App() {
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [voiceError, setVoiceError] = useState('');
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const activeChatController = useRef<AbortController | null>(null);
 
   const refreshProviders = useCallback(async () => {
     try {
@@ -160,11 +161,14 @@ export default function App() {
     setBusy(true);
     if (!speakResponse) setTab('chat');
 
+    const controller = new AbortController();
+    activeChatController.current = controller;
     try {
       const response = await fetch(`${API}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ threadId, content, clientMessageId, providerId: selectedProvider }),
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) {
         const body = await response.json().catch(() => ({}));
@@ -212,9 +216,14 @@ export default function App() {
         window.speechSynthesis.speak(utterance);
       }
     } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content || 'Request cancelled.' } : item));
+        return;
+      }
       const message = error instanceof Error ? error.message : 'CHAT_REQUEST_FAILED';
       setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content ? `${item.content}\n\n[Connection interrupted: ${message}]` : `I couldn't complete that request: ${message}` } : item));
     } finally {
+      if (activeChatController.current === controller) activeChatController.current = null;
       setBusy(false);
     }
   }, [autoSpeak, busy, input, refreshProviders, selectedProvider, threadId, voiceLanguage]);
@@ -502,7 +511,7 @@ export default function App() {
               </section>
             )}
             <div className="chat-messages">{messages.length === 0 && <div className="chat-empty"><div className="empty-orb"><Zap size={35} /></div><h2>How can I help you?</h2><p>Ask ZARA anything. Replies use your configured AI provider.</p><div className="suggestion-row"><button onClick={() => setInput('Explain something in simple Bengali.')}>Explain in Bengali</button><button onClick={() => setInput('Help me write a TypeScript function.')}>Write code</button></div></div>}{messages.map((message) => <article className={`message-row ${message.role}`} key={message.id}><div className="message-avatar">{message.role === 'user' ? 'You' : 'Z'}</div><div className="message-content"><strong>{message.role === 'user' ? 'You' : 'ZARA'}</strong><p>{message.content || (busy ? 'ZARA is thinking…' : '')}</p></div></article>)}</div>
-            <div className="composer-wrap"><div className="composer"><label className="file-attach-button" title="Attach a text file"><input type="file" accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.html,.css,.xml,.log" onChange={async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (file.size > 80000) { setToast("File is too large. Maximum chat attachment size is 80 KB."); return; } try { const text = await file.text(); setInput((current) => current + "\n\n[Attached file: " + file.name + "]\n" + text); } catch { setToast("Could not read this file."); } }} /><Paperclip size={18} /></label><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder="Message ZARA…" rows={1} /><button className="send-button" onClick={() => void sendMessage()} disabled={!input.trim() || busy || !threadId}><Send size={19} /></button></div><small>{enabledProvider ? `Using ${enabledProvider.name}` : 'Choose a verified and enabled provider in Settings. API keys stay on the backend.'}</small></div>
+            <div className="composer-wrap"><div className="composer"><label className="file-attach-button" title="Attach a text file"><input type="file" accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.py,.html,.css,.xml,.log" onChange={async (event) => { const file = event.target.files?.[0]; event.target.value = ""; if (!file) return; if (file.size > 80000) { setToast("File is too large. Maximum chat attachment size is 80 KB."); return; } try { const text = await file.text(); setInput((current) => current + "\n\n[Attached file: " + file.name + "]\n" + text); } catch { setToast("Could not read this file."); } }} /><Paperclip size={18} /></label><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder="Message ZARA…" rows={1} /><button className={busy ? "stop-button" : "send-button"} onClick={() => busy ? activeChatController.current?.abort() : void sendMessage()} disabled={!busy && (!input.trim() || !threadId)} aria-label={busy ? "Stop response" : "Send message"}>{busy ? <X size={19} /> : <Send size={19} />}</button></div><small>{enabledProvider ? `Using ${enabledProvider.name}` : 'Choose a verified and enabled provider in Settings. API keys stay on the backend.'}</small></div>
           </section>
         )}
 
