@@ -1,6 +1,7 @@
 'use strict';
 
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
+const { readFile, writeFile, rename, unlink, mkdir } = require('node:fs/promises');
 const { spawn } = require('node:child_process');
 const { createServer } = require('node:http');
 const net = require('node:net');
@@ -10,6 +11,7 @@ const isDevelopment = process.argv.includes('--dev') || !app.isPackaged;
 let mainWindow = null;
 let apiServer = null;
 let localOrigin = '';
+let storedProviderKeys = { omniroute: '', freellmapi: '' };
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
@@ -49,6 +51,115 @@ if (!gotSingleInstanceLock) {
     if (process.platform !== 'darwin') app.quit();
   });
 }
+
+function isTrustedRenderer(event) {
+  return Boolean(mainWindow && event.sender === mainWindow.webContents);
+}
+
+function providerKeyEnvironmentName(providerId) {
+  return providerId === 'omniroute'
+    ? 'OMNIROUTE_API_KEY'
+    : providerId === 'freellmapi'
+      ? 'FREELLMAPI_API_KEY'
+      : null;
+}
+
+function credentialsFilePath() {
+  return path.join(app.getPath('userData'), 'provider-credentials.enc');
+}
+
+async function writeEncryptedProviderKeys(keys) {
+  if (process.platform !== 'win32' || !(await safeStorage.isAsyncEncryptionAvailable())) {
+    throw new Error('SECURE_STORAGE_UNAVAILABLE');
+  }
+  const file = credentialsFilePath();
+  const temporaryFile = file + '.tmp';
+  await mkdir(path.dirname(file), { recursive: true });
+  const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(keys));
+  await writeFile(temporaryFile, encrypted, { mode: 0o600 });
+  await rename(temporaryFile, file);
+}
+
+async function loadEncryptedProviderKeys() {
+  if (process.platform !== 'win32') return { omniroute: '', freellmapi: '' };
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+    throw new Error('SECURE_STORAGE_UNAVAILABLE');
+  }
+
+  let encrypted;
+  try {
+    encrypted = await readFile(credentialsFilePath());
+  } catch (error) {
+    if (error && error.code === 'ENOENT') return { omniroute: '', freellmapi: '' };
+    throw error;
+  }
+
+  const decrypted = await safeStorage.decryptStringAsync(encrypted);
+  const parsed = JSON.parse(decrypted.result);
+  const keys = {
+    omniroute: typeof parsed.omniroute === 'string' ? parsed.omniroute : '',
+    freellmapi: typeof parsed.freellmapi === 'string' ? parsed.freellmapi : '',
+  };
+
+  if (decrypted.shouldReEncrypt) await writeEncryptedProviderKeys(keys);
+  return keys;
+}
+
+ipcMain.handle('zara:get-provider-key-status', (event) => {
+  if (!isTrustedRenderer(event)) return { available: false, omniroute: false, freellmapi: false };
+  const available = !isDevelopment && process.platform === 'win32';
+  return {
+    available,
+    omniroute: Boolean(storedProviderKeys.omniroute),
+    freellmapi: Boolean(storedProviderKeys.freellmapi),
+  };
+});
+
+ipcMain.handle('zara:save-provider-key', async (event, providerId, rawKey) => {
+  if (!isTrustedRenderer(event) || isDevelopment || process.platform !== 'win32') {
+    return { ok: false, error: 'SECURE_STORAGE_UNAVAILABLE' };
+  }
+  const envName = providerKeyEnvironmentName(providerId);
+  if (!envName || typeof rawKey !== 'string') return { ok: false, error: 'INVALID_PROVIDER' };
+  const key = rawKey.trim();
+  if (!key || key.length > 4096 || /[\\r\\n\\0]/.test(key)) {
+    return { ok: false, error: 'INVALID_API_KEY' };
+  }
+
+  try {
+    const next = { ...storedProviderKeys, [providerId]: key };
+    await writeEncryptedProviderKeys(next);
+    storedProviderKeys = next;
+    process.env[envName] = key;
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'SECURE_STORAGE_FAILED' };
+  }
+});
+
+ipcMain.handle('zara:clear-provider-key', async (event, providerId) => {
+  if (!isTrustedRenderer(event) || isDevelopment || process.platform !== 'win32') {
+    return { ok: false, error: 'SECURE_STORAGE_UNAVAILABLE' };
+  }
+  const envName = providerKeyEnvironmentName(providerId);
+  if (!envName) return { ok: false, error: 'INVALID_PROVIDER' };
+
+  try {
+    const next = { ...storedProviderKeys, [providerId]: '' };
+    if (next.omniroute || next.freellmapi) {
+      await writeEncryptedProviderKeys(next);
+    } else {
+      try { await unlink(credentialsFilePath()); } catch (error) {
+        if (!error || error.code !== 'ENOENT') throw error;
+      }
+    }
+    storedProviderKeys = next;
+    delete process.env[envName];
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'SECURE_STORAGE_FAILED' };
+  }
+});
 
 ipcMain.handle('zara:launch-app', (event, appId) => {
   if (!mainWindow || event.sender !== mainWindow.webContents) {
@@ -118,6 +229,9 @@ async function startLocalApi() {
 
   process.env.NODE_ENV = 'production';
   process.env.PORT = String(port);
+  storedProviderKeys = await loadEncryptedProviderKeys();
+  if (storedProviderKeys.omniroute) process.env.OMNIROUTE_API_KEY = storedProviderKeys.omniroute;
+  if (storedProviderKeys.freellmapi) process.env.FREELLMAPI_API_KEY = storedProviderKeys.freellmapi;
   process.env.ZARA_DATA_DIR = path.join(app.getPath('userData'), 'data');
   const configuredOrigins = (process.env.CORS_ORIGINS || '')
     .split(',')
