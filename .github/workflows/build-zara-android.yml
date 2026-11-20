@@ -1,0 +1,85 @@
+name: Build ZARA Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: zara-app/package-lock.json
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: zara-app
+        run: npm install
+
+      - name: Build mobile web assets
+        working-directory: zara-app
+        env:
+          VITE_MOBILE_APP: 'true'
+        run: npm run build
+
+      - name: Generate Android project
+        working-directory: zara-app
+        run: npx cap add android
+
+      - name: Enable scoped third-party session cookies
+        working-directory: zara-app
+        shell: bash
+        run: |
+          cat > android/app/src/main/java/com/zara/assistant/MainActivity.java <<'JAVA'
+          package com.zara.assistant;
+
+          import android.webkit.CookieManager;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+            @Override
+            protected void load() {
+              super.load();
+              if (getBridge() != null) {
+                CookieManager.getInstance().setAcceptThirdPartyCookies(
+                  getBridge().getWebView(),
+                  true
+                );
+              }
+            }
+          }
+          JAVA
+
+      - name: Sync Capacitor
+        working-directory: zara-app
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: zara-app/android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: zara-android-debug-apk
+          path: zara-app/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
