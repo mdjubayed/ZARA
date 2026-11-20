@@ -183,6 +183,68 @@ public class ZaraSpeechRecognitionPlugin extends Plugin {
 }
 `;
 
+const externalBrowserPlugin = `package com.zara.assistant;
+
+import android.content.Intent;
+import android.net.Uri;
+import android.util.Patterns;
+
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+@CapacitorPlugin(name = "ZaraExternalBrowser")
+public class ZaraExternalBrowserPlugin extends Plugin {
+  @PluginMethod
+  public void openUrl(PluginCall call) {
+    String rawUrl = call.getString("url");
+    if (rawUrl == null || rawUrl.length() > 2048) {
+      call.reject("INVALID_EXTERNAL_URL");
+      return;
+    }
+
+    Uri uri = Uri.parse(rawUrl);
+    String host = uri.getHost();
+    if (!"https".equalsIgnoreCase(uri.getScheme())
+        || host == null
+        || uri.getUserInfo() != null
+        || (uri.getPort() != -1 && uri.getPort() != 443)) {
+      call.reject("EXTERNAL_URL_NOT_ALLOWED");
+      return;
+    }
+
+    String hostname = host.toLowerCase(java.util.Locale.ROOT);
+    if (Patterns.IP_ADDRESS.matcher(hostname).matches()
+        || hostname.contains(":")
+        || hostname.equals("localhost")
+        || hostname.endsWith(".localhost")
+        || hostname.endsWith(".local")
+        || hostname.endsWith(".internal")
+        || hostname.endsWith(".test")
+        || hostname.endsWith(".invalid")
+        || !hostname.contains(".")) {
+      call.reject("EXTERNAL_URL_NOT_ALLOWED");
+      return;
+    }
+
+    Intent intent = new Intent(Intent.ACTION_VIEW, uri);
+    intent.addCategory(Intent.CATEGORY_BROWSABLE);
+    if (intent.resolveActivity(getContext().getPackageManager()) == null) {
+      call.reject("EXTERNAL_BROWSER_UNAVAILABLE");
+      return;
+    }
+
+    try {
+      getActivity().startActivity(intent);
+      call.resolve();
+    } catch (Exception error) {
+      call.reject("EXTERNAL_BROWSER_OPEN_FAILED");
+    }
+  }
+}
+`;
+
 const activity = `package com.zara.assistant;
 
 import android.os.Bundle;
@@ -193,6 +255,7 @@ public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
     registerPlugin(ZaraSpeechRecognitionPlugin.class);
+    registerPlugin(ZaraExternalBrowserPlugin.class);
     super.onCreate(savedInstanceState);
   }
 
@@ -211,6 +274,7 @@ public class MainActivity extends BridgeActivity {
 
 writeFileSync(javaDirectory + '/MainActivity.java', activity, 'utf8');
 writeFileSync(javaDirectory + '/ZaraSpeechRecognitionPlugin.java', plugin, 'utf8');
+writeFileSync(javaDirectory + '/ZaraExternalBrowserPlugin.java', externalBrowserPlugin, 'utf8');
 
 const manifestPath = 'android/app/src/main/AndroidManifest.xml';
 let manifest = readFileSync(manifestPath, 'utf8');
