@@ -5,11 +5,11 @@ const { spawnSync } = require('node:child_process');
 
 const androidDirectory = 'android';
 if (!existsSync(androidDirectory)) {
-  const command = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const result = spawnSync(command, ['cap', 'add', 'android'], {
-    stdio: 'inherit',
-    shell: process.platform === 'win32',
-  });
+  const command = process.platform === 'win32' ? 'cmd.exe' : 'npx';
+  const args = process.platform === 'win32'
+    ? ['/d', '/s', '/c', 'npx cap add android']
+    : ['cap', 'add', 'android'];
+  const result = spawnSync(command, args, { stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     throw new Error('CAPACITOR_ANDROID_GENERATION_FAILED');
