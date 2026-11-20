@@ -12,7 +12,7 @@ ZARA's Android shell is built with Capacitor 8. The APK contains the frontend; i
 6. Keep the backend behind HTTPS and a trusted reverse proxy. Do not expose provider service ports.
 7. Create the Owner account on the hosted installation before using the app.
 
-The Android WebView uses the app origin `https://localhost` and sends credentialed requests to the configured API host. Android voice input uses the native SpeechRecognizer service and requests microphone permission only when the user taps Start Speaking. The system recognition service may send audio to remote servers; voice recognition is not always-on. The backend issues a Secure, HttpOnly, SameSite=None session cookie only for an allowlisted cross-origin request. The generated Android activity enables third-party cookies for this app's WebView so the session can be retained. Only connect to a server you trust.
+The Android WebView uses the app origin `https://localhost` and sends credentialed requests to the configured API host. Android voice input uses the native SpeechRecognizer service and requests microphone permission only when the user taps Start Speaking. The system recognition service may send audio to remote servers; voice recognition is not always-on. The backend issues a Secure, HttpOnly, SameSite=None session cookie only for an allowlisted cross-origin request. The generated Android activity enables third-party cookies for this app's WebView so the session can be retained. Web searches and approved HTTPS pages open through a small native external-browser bridge after the in-app confirmation. Only connect to a server you trust.
 
 ## First launch on Android
 
@@ -31,7 +31,7 @@ The repository includes a manual GitHub Actions workflow:
 - Wait for the workflow to finish.
 - Download the `zara-android-debug-apk` artifact from that workflow run.
 
-The workflow installs dependencies, builds the web assets, generates the Capacitor Android project, registers ZARA's native Bengali/English speech-recognition plugin, adds the microphone permission and Android recognition-service query, enables the scoped WebView cookie policy, and builds a debug APK. This workflow has not yet been run, so no APK is claimed to exist.
+The workflow installs dependencies, builds the web assets, generates the Capacitor Android project, registers ZARA's native Bengali/English speech-recognition plugin and HTTPS external-browser plugin, adds the microphone permission and Android recognition-service query, enables the scoped WebView cookie policy, and builds a debug APK. This workflow has not yet been run, so no APK is claimed to exist.
 
 ## Local development
 
