@@ -1,0 +1,35 @@
+ZARA BRAIN + DASHBOARD PATCH
+
+Copy the contents of this archive into the existing zara-app folder, preserving folders.
+Do not copy over your current data/ folder or any .env file.
+
+Files added:
+server/db/repositories/chatRequestRepository.ts
+server/routes/chat.ts
+server/services/openAICompatibleAdapter.ts
+server/services/providerAdapters.ts
+server/services/brainManager.ts
+src/assets/zara-hero.png
+.env.example
+
+Files replaced:
+server/app.ts
+server/config.ts
+server/db/schema.ts
+server/db/repositories/messageRepository.ts
+server/db/repositories/providerRepository.ts
+server/routes/providers.ts
+server/services/providerAdapter.ts
+server/services/chatService.ts
+src/App.tsx
+src/App.css
+src/index.css
+vite.config.ts
+tests/chatService.test.ts
+tests/providerRegistry.test.ts
+
+Manual merge:
+Add the test script from PACKAGE-SCRIPTS.txt to the existing package.json scripts object.
+No new npm dependency is required.
+
+After copying, compare with your current branch diff before committing. Keep .env private.

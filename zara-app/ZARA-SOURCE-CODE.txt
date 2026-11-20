@@ -1,0 +1,3192 @@
+
+========== FILE: server/app.ts ==========
+import express from 'express';
+import cors from 'cors';
+import { config } from './config.js';
+import { threadRouter } from './routes/threads.js';
+import { messageRouter } from './routes/messages.js';
+import { settingsRouter } from './routes/settings.js';
+import { providerRouter } from './routes/providers.js';
+import { chatRouter } from './routes/chat.js';
+import searchRouter from './routes/search.js';
+
+export const app = express();
+app.disable('x-powered-by');
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    const isLocalOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    const isCodespacesOrigin = /^https:\/\/[a-zA-Z0-9-]+\.app\.github\.dev$/.test(origin);
+    const isAllowed = config.corsOrigins.includes(origin) || (!config.isProduction && (isLocalOrigin || isCodespacesOrigin));
+    if (isAllowed) return callback(null, true);
+    return callback(new Error('CORS_ORIGIN_NOT_ALLOWED'));
+  },
+}));
+
+app.use(express.json({ limit: '1mb' }));
+app.use('/api/v1/threads', threadRouter);
+app.use('/api/v1/threads/:threadId/messages', messageRouter);
+app.use('/api/v1/settings', settingsRouter);
+app.use('/api/v1/providers', providerRouter);
+app.use('/api/v1/chat', chatRouter);
+app.use('/api/v1/search', searchRouter);
+app.get('/api/v1/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', service: 'zara-api', timestamp: new Date().toISOString() });
+});
+
+========== FILE: server/config.ts ==========
+import 'dotenv/config';
+import { z } from 'zod';
+
+const envSchema = z.object({
+  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  // FreeLLMAPI uses 3001 by default; ZARA therefore uses 3002.
+  PORT: z.coerce.number().int().min(1).max(65535).default(3002),
+  ZARA_BACKEND_URL: z.string().optional().default(''),
+  ZARA_DATA_DIR: z.string().optional().default(''),
+  CORS_ORIGINS: z.string().optional().default(''),
+  OMNIROUTE_BASE_URL: z.string().url().default('http://127.0.0.1:20128/v1'),
+  FREELLMAPI_BASE_URL: z.string().url().default('http://127.0.0.1:3001/v1'),
+  PROVIDER_TIMEOUT_MS: z.coerce.number().int().min(1000).max(180000).default(60000),
+});
+
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  console.error('Invalid server environment configuration:', parsed.error.flatten().fieldErrors);
+  throw new Error('INVALID_SERVER_ENVIRONMENT');
+}
+
+export const config = {
+  nodeEnv: parsed.data.NODE_ENV,
+  port: parsed.data.PORT,
+  dataDirectory: parsed.data.ZARA_DATA_DIR || undefined,
+  omniRouteBaseUrl: parsed.data.OMNIROUTE_BASE_URL.replace(/\/+$/, ''),
+  freeLlmApiBaseUrl: parsed.data.FREELLMAPI_BASE_URL.replace(/\/+$/, ''),
+  providerTimeoutMs: parsed.data.PROVIDER_TIMEOUT_MS,
+  corsOrigins: parsed.data.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean),
+  isProduction: parsed.data.NODE_ENV === 'production',
+  isDevelopment: parsed.data.NODE_ENV === 'development',
+};
+
+========== FILE: server/db/database.ts ==========
+import Database from 'better-sqlite3';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { SCHEMA_SQL } from './schema.js';
+
+let database: Database.Database | null = null;
+
+export function getDatabase(): Database.Database {
+  if (database) return database;
+
+  const dataDirectory = path.resolve(
+    process.env.ZARA_DATA_DIR || path.join(process.cwd(), 'data')
+  );
+
+  mkdirSync(dataDirectory, { recursive: true });
+
+  const databasePath = path.join(dataDirectory, 'zara.sqlite');
+
+  database = new Database(databasePath);
+
+  database.pragma('journal_mode = WAL');
+  database.pragma('foreign_keys = ON');
+  database.pragma('busy_timeout = 5000');
+
+  database.exec(SCHEMA_SQL);
+
+  return database;
+}
+
+export function closeDatabase(): void {
+  if (database) {
+    database.close();
+    database = null;
+  }
+}
+
+========== FILE: server/db/repositories/chatRequestRepository.ts ==========
+import { getDatabase } from '../database.js';
+
+export interface ChatRequestRecord {
+  request_id: string;
+  thread_id: string;
+  user_message_id: string;
+  assistant_message_id: string | null;
+  provider_id: string | null;
+  model: string | null;
+  status: 'running' | 'completed';
+}
+
+export function claimChatRequest(
+  requestId: string,
+  threadId: string,
+  userMessageId: string,
+): { claimed: boolean; record: ChatRequestRecord } {
+  const db = getDatabase();
+  // The additive table is created by the normal database schema migration.
+  db.prepare(`DELETE FROM chat_requests WHERE status = 'running' AND created_at < datetime('now', '-10 minutes')`).run();
+
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO chat_requests
+      (request_id, thread_id, user_message_id, status)
+    VALUES (?, ?, ?, 'running')
+  `).run(requestId, threadId, userMessageId);
+
+  const record = db.prepare('SELECT * FROM chat_requests WHERE request_id = ?')
+    .get(requestId) as ChatRequestRecord;
+  return { claimed: result.changes === 1, record };
+}
+
+export function completeChatRequest(
+  requestId: string,
+  assistantMessageId: string,
+  providerId: string,
+  model?: string,
+): void {
+  getDatabase().prepare(`
+    UPDATE chat_requests
+    SET assistant_message_id = ?, provider_id = ?, model = ?, status = 'completed'
+    WHERE request_id = ? AND status = 'running'
+  `).run(assistantMessageId, providerId, model ?? null, requestId);
+}
+
+export function releaseChatRequest(requestId: string): void {
+  getDatabase().prepare("DELETE FROM chat_requests WHERE request_id = ? AND status = 'running'").run(requestId);
+}
+
+========== FILE: server/db/repositories/messageRepository.ts ==========
+
+import { randomUUID } from 'node:crypto';
+import { getDatabase } from '../database.js';
+
+export type MessageRole = 'user' | 'assistant' | 'system';
+
+export interface Message {
+  id: string;
+  thread_id: string;
+  role: MessageRole;
+  content: string;
+  created_at: string;
+}
+
+export interface SearchMessageItem {
+  id: string;
+  thread_id: string;
+  thread_title: string;
+  role: MessageRole;
+  content: string;
+  created_at: string;
+}
+
+export interface SearchMessagesPaginatedParams {
+  query: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface SearchMessagesPaginatedResult {
+  results: SearchMessageItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export function createMessage(
+  threadId: string,
+  role: MessageRole,
+  content: string,
+  id = randomUUID(),
+): Message {
+  const db = getDatabase();
+  const existing = getMessageById(id);
+  if (existing) {
+    if (existing.thread_id === threadId && existing.role === role && existing.content === content) {
+      return existing;
+    }
+    throw new Error('MESSAGE_ID_CONFLICT');
+  }
+
+  const threadExists = db.prepare(
+    'SELECT id FROM threads WHERE id = ?'
+  ).get(threadId);
+
+  if (!threadExists) {
+    throw new Error('THREAD_NOT_FOUND');
+  }
+
+  if (!content.trim()) {
+    throw new Error('MESSAGE_CONTENT_REQUIRED');
+  }
+
+  const save = db.transaction(() => {
+    db.prepare(`
+      INSERT INTO messages (id, thread_id, role, content)
+      VALUES (?, ?, ?, ?)
+    `).run(id, threadId, role, content);
+
+    db.prepare(`
+      UPDATE threads
+      SET updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(threadId);
+  });
+
+  save();
+
+  return getMessageById(id)!;
+}
+
+export function getMessageById(id: string): Message | undefined {
+  return getDatabase()
+    .prepare('SELECT * FROM messages WHERE id = ?')
+    .get(id) as Message | undefined;
+}
+
+export function getMessagesByThread(threadId: string): Message[] {
+  return getDatabase()
+    .prepare(`
+      SELECT * FROM messages
+      WHERE thread_id = ?
+      ORDER BY created_at ASC, rowid ASC
+    `)
+    .all(threadId) as Message[];
+}
+
+export function deleteMessage(id: string): boolean {
+  const result = getDatabase()
+    .prepare('DELETE FROM messages WHERE id = ?')
+    .run(id);
+
+  return result.changes > 0;
+}
+
+export function searchMessages(
+  query: string,
+  limit = 50
+): Message[] {
+  const db = getDatabase();
+  const term = query.trim();
+
+  if (!term) return [];
+
+  const safeLimit = Math.max(1, Math.min(limit, 100));
+
+  try {
+    const words = term
+      .replace(/["*(){}[\]^:+-]/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (words.length === 0) return [];
+
+    const matchQuery = words
+      .map(word => `"${word.replace(/"/g, '""')}"`)
+      .join(' AND ');
+
+    return db.prepare(`
+      SELECT m.*
+      FROM messages_fts f
+      JOIN messages m ON m.id = f.message_id
+      WHERE messages_fts MATCH ?
+      ORDER BY m.created_at DESC, m.rowid DESC
+      LIMIT ?
+    `).all(matchQuery, safeLimit) as Message[];
+  } catch {
+    return db.prepare(`
+      SELECT * FROM messages
+      WHERE content LIKE ?
+      ORDER BY created_at DESC, rowid DESC
+      LIMIT ?
+    `).all(`%${term}%`, safeLimit) as Message[];
+  }
+}
+
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+export function searchMessagesPaginated(
+  params: SearchMessagesPaginatedParams
+): SearchMessagesPaginatedResult {
+  const rawPage =
+    typeof params.page === 'number' && Number.isFinite(params.page)
+      ? Math.trunc(params.page)
+      : 1;
+
+  const safePage = Math.max(1, rawPage);
+
+  const rawLimit =
+    typeof params.limit === 'number' && Number.isFinite(params.limit)
+      ? Math.trunc(params.limit)
+      : 20;
+
+  const safeLimit = Math.max(1, Math.min(rawLimit, 100));
+
+  const term =
+    typeof params.query === 'string' ? params.query.trim() : '';
+
+  if (!term) {
+    return {
+      results: [],
+      total: 0,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: 0,
+    };
+  }
+
+  const words = term
+    .replace(/["*(){}[\]^:+-]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) {
+    return {
+      results: [],
+      total: 0,
+      page: safePage,
+      limit: safeLimit,
+      totalPages: 0,
+    };
+  }
+
+  const db = getDatabase();
+  const offset = (safePage - 1) * safeLimit;
+
+  if (!Number.isSafeInteger(offset)) {
+    throw new Error('INVALID_SEARCH_PAGE');
+  }
+
+  const matchQuery = words
+    .map(word => `"${word.replace(/"/g, '""')}"`)
+    .join(' AND ');
+
+  try {
+    const runFtsSearch = db.transaction(() => {
+      const countRow = db.prepare(`
+        SELECT COUNT(*) AS total
+        FROM messages_fts f
+        JOIN messages m ON m.id = f.message_id
+        JOIN threads t ON t.id = m.thread_id
+        WHERE messages_fts MATCH ?
+      `).get(matchQuery) as { total: number } | undefined;
+
+      const total = countRow?.total ?? 0;
+      const totalPages = total === 0
+        ? 0
+        : Math.ceil(total / safeLimit);
+
+      if (total === 0 || offset >= total) {
+        return {
+          results: [] as SearchMessageItem[],
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages,
+        };
+      }
+
+      const results = db.prepare(`
+        SELECT
+          m.id,
+          m.thread_id,
+          t.title AS thread_title,
+          m.role,
+          m.content,
+          m.created_at
+        FROM messages_fts f
+        JOIN messages m ON m.id = f.message_id
+        JOIN threads t ON t.id = m.thread_id
+        WHERE messages_fts MATCH ?
+        ORDER BY m.created_at DESC, m.rowid DESC
+        LIMIT ? OFFSET ?
+      `).all(matchQuery, safeLimit, offset) as SearchMessageItem[];
+
+      return {
+        results,
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages,
+      };
+    });
+
+    return runFtsSearch();
+  } catch {
+    const likePattern = `%${escapeLikePattern(term)}%`;
+
+    const runLikeFallback = db.transaction(() => {
+      const countRow = db.prepare(String.raw`
+        SELECT COUNT(*) AS total
+        FROM messages m
+        JOIN threads t ON t.id = m.thread_id
+        WHERE m.content LIKE ? ESCAPE '\'
+      `).get(likePattern) as { total: number } | undefined;
+
+      const total = countRow?.total ?? 0;
+      const totalPages = total === 0
+        ? 0
+        : Math.ceil(total / safeLimit);
+
+      if (total === 0 || offset >= total) {
+        return {
+          results: [] as SearchMessageItem[],
+          total,
+          page: safePage,
+          limit: safeLimit,
+          totalPages,
+        };
+      }
+
+      const results = db.prepare(String.raw`
+        SELECT
+          m.id,
+          m.thread_id,
+          t.title AS thread_title,
+          m.role,
+          m.content,
+          m.created_at
+        FROM messages m
+        JOIN threads t ON t.id = m.thread_id
+        WHERE m.content LIKE ? ESCAPE '\'
+        ORDER BY m.created_at DESC, m.rowid DESC
+        LIMIT ? OFFSET ?
+      `).all(likePattern, safeLimit, offset) as SearchMessageItem[];
+
+      return {
+        results,
+        total,
+        page: safePage,
+        limit: safeLimit,
+        totalPages,
+      };
+    });
+
+    return runLikeFallback();
+  }
+}
+
+========== FILE: server/db/repositories/providerRepository.ts ==========
+import { getDatabase } from '../database.js';
+
+export type ProviderStatus =
+  | 'unconfigured'
+  | 'pending_verification'
+  | 'ready'
+  | 'disabled';
+
+export type SupportedProviderId = 'omniroute' | 'freellmapi';
+
+export interface Provider {
+  id: string;
+  name: string;
+  status: ProviderStatus;
+  enabled: number;
+  config: string;
+  created_at: string;
+  updated_at: string;
+}
+
+const DEFAULT_PROVIDERS = [
+  { id: 'omniroute', name: 'OmniRoute', status: 'pending_verification' },
+  { id: 'freellmapi', name: 'FreeLLMAPI', status: 'pending_verification' },
+] as const;
+
+export function isSupportedProviderId(id: string): id is SupportedProviderId {
+  return id === 'omniroute' || id === 'freellmapi';
+}
+
+export function initializeProviders(): void {
+  const db = getDatabase();
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO providers (id, name, status, enabled, config)
+    VALUES (?, ?, ?, 0, '{}')
+  `);
+  const seed = db.transaction(() => {
+    for (const provider of DEFAULT_PROVIDERS) {
+      insert.run(provider.id, provider.name, provider.status);
+    }
+  });
+  seed();
+}
+
+export function getAllProviders(): Provider[] {
+  initializeProviders();
+  return getDatabase()
+    .prepare("SELECT * FROM providers WHERE id IN ('omniroute', 'freellmapi') ORDER BY CASE id WHEN 'omniroute' THEN 0 ELSE 1 END")
+    .all() as Provider[];
+}
+
+export function getProviderById(id: string): Provider | undefined {
+  initializeProviders();
+  if (!isSupportedProviderId(id)) return undefined;
+  return getDatabase()
+    .prepare('SELECT * FROM providers WHERE id = ?')
+    .get(id) as Provider | undefined;
+}
+
+export function markProviderReadyAfterVerification(id: SupportedProviderId): Provider | undefined {
+  const provider = getProviderById(id);
+  if (!provider) return undefined;
+  getDatabase().prepare(`
+    UPDATE providers
+    SET status = 'ready', updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(id);
+  return getProviderById(id);
+}
+
+export function setProviderStatus(
+  id: string,
+  status: Exclude<ProviderStatus, 'ready'>,
+): Provider | undefined {
+  const provider = getProviderById(id);
+  if (!provider) return undefined;
+  getDatabase().prepare(`
+    UPDATE providers
+    SET status = ?,
+        enabled = CASE WHEN ? = 'disabled' THEN 0 ELSE enabled END,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(status, status, id);
+  return getProviderById(id);
+}
+
+export function setProviderEnabled(id: string, enabled: boolean): Provider | undefined {
+  const provider = getProviderById(id);
+  if (!provider) return undefined;
+  if (enabled && provider.status !== 'ready') throw new Error('PROVIDER_NOT_READY');
+  getDatabase().prepare(`
+    UPDATE providers SET enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `).run(enabled ? 1 : 0, id);
+  return getProviderById(id);
+}
+
+========== FILE: server/db/repositories/settingsRepository.ts ==========
+import { getDatabase } from '../database.js';
+
+export type SettingValue = string | number | boolean | object | null;
+
+export function getSetting<T = SettingValue>(
+  key: string,
+  fallback: T | null = null
+): T | null {
+  const row = getDatabase()
+    .prepare('SELECT value FROM settings WHERE key = ?')
+    .get(key) as { value: string } | undefined;
+
+  if (!row) return fallback;
+
+  try {
+    return JSON.parse(row.value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+export function getAllSettings(): Record<string, SettingValue> {
+  const rows = getDatabase()
+    .prepare('SELECT key, value FROM settings')
+    .all() as { key: string; value: string }[];
+
+  const settings: Record<string, SettingValue> = {};
+
+  for (const row of rows) {
+    try {
+      settings[row.key] = JSON.parse(row.value) as SettingValue;
+    } catch {
+      settings[row.key] = row.value;
+    }
+  }
+
+  return settings;
+}
+
+export function setSetting(
+  key: string,
+  value: SettingValue
+): void {
+  getDatabase().prepare(`
+    INSERT INTO settings (key, value, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = CURRENT_TIMESTAMP
+  `).run(key, JSON.stringify(value));
+}
+
+export function setMultipleSettings(
+  settings: Record<string, SettingValue>
+): void {
+  const db = getDatabase();
+
+  const save = db.transaction(() => {
+    for (const [key, value] of Object.entries(settings)) {
+      db.prepare(`
+        INSERT INTO settings (key, value, updated_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = CURRENT_TIMESTAMP
+      `).run(key, JSON.stringify(value));
+    }
+  });
+
+  save();
+}
+
+export function deleteSetting(key: string): boolean {
+  const result = getDatabase()
+    .prepare('DELETE FROM settings WHERE key = ?')
+    .run(key);
+
+  return result.changes > 0;
+}
+
+========== FILE: server/db/repositories/threadRepository.ts ==========
+import { randomUUID } from 'node:crypto';
+import { getDatabase } from '../database.js';
+
+export interface Thread {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function createThread(title = 'New Chat'): Thread {
+  const db = getDatabase();
+  const id = randomUUID();
+
+  db.prepare(`
+    INSERT INTO threads (id, title)
+    VALUES (?, ?)
+  `).run(id, title.trim() || 'New Chat');
+
+  return getThreadById(id)!;
+}
+
+export function getThreadById(id: string): Thread | undefined {
+  return getDatabase()
+    .prepare('SELECT * FROM threads WHERE id = ?')
+    .get(id) as Thread | undefined;
+}
+
+export function getAllThreads(): Thread[] {
+  return getDatabase()
+    .prepare('SELECT * FROM threads ORDER BY updated_at DESC')
+    .all() as Thread[];
+}
+
+export function updateThreadTitle(
+  id: string,
+  title: string
+): Thread | undefined {
+  const db = getDatabase();
+
+  const result = db.prepare(`
+    UPDATE threads
+    SET title = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(title.trim(), id);
+
+  return result.changes > 0 ? getThreadById(id) : undefined;
+}
+
+export function deleteThread(id: string): boolean {
+  const result = getDatabase()
+    .prepare('DELETE FROM threads WHERE id = ?')
+    .run(id);
+
+  return result.changes > 0;
+}
+
+========== FILE: server/db/schema.ts ==========
+export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS threads (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT 'New Chat',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  content TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_thread_created
+ON messages(thread_id, created_at);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'unconfigured'
+    CHECK (status IN ('unconfigured', 'pending_verification', 'ready', 'disabled')),
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+  config TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS chat_requests (
+  request_id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  user_message_id TEXT NOT NULL,
+  assistant_message_id TEXT,
+  provider_id TEXT,
+  model TEXT,
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_message_id) REFERENCES messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (assistant_message_id) REFERENCES messages(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_requests (
+  request_id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  user_message_id TEXT NOT NULL,
+  assistant_message_id TEXT,
+  provider_id TEXT,
+  model TEXT,
+  status TEXT NOT NULL CHECK (status IN ('running', 'completed')),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_message_id) REFERENCES messages(id) ON DELETE CASCADE,
+  FOREIGN KEY (assistant_message_id) REFERENCES messages(id) ON DELETE SET NULL
+);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+  message_id UNINDEXED,
+  thread_id UNINDEXED,
+  content,
+  tokenize = 'unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS messages_fts_insert
+AFTER INSERT ON messages
+BEGIN
+  INSERT INTO messages_fts(message_id, thread_id, content)
+  VALUES (new.id, new.thread_id, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS messages_fts_delete
+AFTER DELETE ON messages
+BEGIN
+  DELETE FROM messages_fts WHERE message_id = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS messages_fts_update
+AFTER UPDATE OF content ON messages
+BEGIN
+  DELETE FROM messages_fts WHERE message_id = old.id;
+  INSERT INTO messages_fts(message_id, thread_id, content)
+  VALUES (new.id, new.thread_id, new.content);
+END;
+`;
+
+========== FILE: server/index.ts ==========
+import { createServer } from 'node:http';
+import { app } from './app';
+import { config } from './config';
+import { closeDatabase } from './db/database';
+
+const server = createServer(app);
+
+server.listen(config.port, () => {
+  console.log(`ZARA API running on port ${config.port}`);
+  console.log(`Environment: ${config.nodeEnv}`);
+});
+
+function shutdown(signal: string) {
+  console.log(`${signal} received. Shutting down ZARA API...`);
+
+  server.close(() => {
+    try {
+      closeDatabase();
+      console.log('ZARA API stopped.');
+      process.exit(0);
+    } catch (error) {
+      console.error('Database shutdown failed:', error);
+      process.exit(1);
+    }
+  });
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+========== FILE: server/routes/chat.ts ==========
+import { Router } from 'express';
+import { z } from 'zod';
+import { sendChatMessage, ChatServiceError } from '../services/chatService.js';
+import { initializeProviderAdapters } from '../services/providerAdapters.js';
+import { ProviderRequestError } from '../services/providerAdapter.js';
+
+export const chatRouter = Router();
+
+const chatSchema = z.object({
+  threadId: z.string().trim().min(1).max(100),
+  content: z.string().trim().min(1).max(100000),
+  clientMessageId: z.string().trim().min(1).max(80),
+  providerId: z.enum(['omniroute', 'freellmapi']).optional(),
+});
+
+chatRouter.post('/stream', async (req, res) => {
+  const parsed = chatSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'INVALID_CHAT_REQUEST' });
+
+  initializeProviderAdapters();
+  const controller = new AbortController();
+  res.on('close', () => {
+    if (!res.writableEnded) controller.abort();
+  });
+
+  res.status(200);
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const sendEvent = (event: string, data: unknown) => {
+    if (res.writableEnded) return;
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const result = await sendChatMessage({
+      ...parsed.data,
+      signal: controller.signal,
+      onToken: (token) => sendEvent('token', { token }),
+    });
+    sendEvent('done', {
+      userMessage: result.userMessage,
+      assistantMessage: result.assistantMessage,
+      providerId: result.providerId,
+      model: result.model,
+    });
+  } catch (error) {
+    if (error instanceof ChatServiceError) {
+      sendEvent('error', { error: error.code });
+    } else if (error instanceof ProviderRequestError) {
+      sendEvent('error', { error: error.code, providerId: error.providerId });
+    } else {
+      sendEvent('error', { error: 'CHAT_REQUEST_FAILED' });
+    }
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+});
+
+========== FILE: server/routes/messages.ts ==========
+import { Router } from 'express';
+import { z } from 'zod';
+import { getThreadById } from '../db/repositories/threadRepository';
+import {
+  createMessage,
+  getMessageById,
+  getMessagesByThread,
+  deleteMessage,
+} from '../db/repositories/messageRepository';
+
+export const messageRouter = Router({ mergeParams: true });
+
+const createMessageSchema = z.object({
+  role: z.enum(['user', 'assistant', 'system']),
+  content: z.string().trim().min(1).max(100000),
+});
+
+// GET: List messages in a thread
+messageRouter.get('/', (req, res) => {
+  const threadId = req.params.threadId;
+  const thread = getThreadById(threadId);
+
+  if (!thread) {
+    return res.status(404).json({ error: 'THREAD_NOT_FOUND' });
+  }
+
+  const messages = getMessagesByThread(threadId);
+  return res.status(200).json({ messages });
+});
+
+// POST: Create a message
+messageRouter.post('/', (req, res) => {
+  const threadId = req.params.threadId;
+  const thread = getThreadById(threadId);
+
+  if (!thread) {
+    return res.status(404).json({ error: 'THREAD_NOT_FOUND' });
+  }
+
+  const parsed = createMessageSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'INVALID_MESSAGE_DATA',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const message = createMessage(
+    threadId,
+    parsed.data.role,
+    parsed.data.content
+  );
+
+  return res.status(201).json({ message });
+});
+
+// DELETE: Delete a message
+messageRouter.delete('/:messageId', (req, res) => {
+  const existing = getMessageById(req.params.messageId);
+
+  if (!existing || existing.thread_id !== req.params.threadId) {
+    return res.status(404).json({ error: 'MESSAGE_NOT_FOUND' });
+  }
+
+  const deleted = deleteMessage(req.params.messageId);
+
+  if (!deleted) {
+    return res.status(404).json({ error: 'MESSAGE_NOT_FOUND' });
+  }
+
+  return res.status(200).json({ success: true });
+});
+
+========== FILE: server/routes/providers.ts ==========
+import { Router } from 'express';
+import { z } from 'zod';
+import {
+  getAllProviders,
+  getProviderById,
+  markProviderReadyAfterVerification,
+  setProviderStatus,
+  setProviderEnabled,
+  isSupportedProviderId,
+  type Provider,
+} from '../db/repositories/providerRepository.js';
+import { verifyProvider } from '../services/brainManager.js';
+import { initializeProviderAdapters } from '../services/providerAdapters.js';
+
+export const providerRouter = Router();
+
+function serializeProvider(provider: Provider) {
+  return {
+    id: provider.id,
+    name: provider.name,
+    status: provider.status,
+    enabled: provider.enabled,
+    created_at: provider.created_at,
+    updated_at: provider.updated_at,
+  };
+}
+
+const statusSchema = z.object({
+  status: z.enum(['unconfigured', 'pending_verification', 'disabled']),
+});
+const enabledSchema = z.object({ enabled: z.boolean() });
+
+providerRouter.get('/', (_req, res) => {
+  return res.status(200).json({ providers: getAllProviders().map(serializeProvider) });
+});
+
+providerRouter.get('/:id', (req, res) => {
+  const provider = getProviderById(req.params.id);
+  if (!provider) return res.status(404).json({ error: 'PROVIDER_NOT_FOUND' });
+  return res.status(200).json({ provider: serializeProvider(provider) });
+});
+
+providerRouter.post('/:id/verify', async (req, res) => {
+  const id = req.params.id;
+  if (!isSupportedProviderId(id)) return res.status(404).json({ error: 'PROVIDER_NOT_FOUND' });
+  try {
+    initializeProviderAdapters();
+    const models = await verifyProvider(id);
+    if (models.length === 0) return res.status(502).json({ error: 'PROVIDER_NO_MODELS_RETURNED' });
+    const model = (id === 'omniroute' ? process.env.OMNIROUTE_MODEL : process.env.FREELLMAPI_MODEL)?.trim();
+    if (!model) return res.status(400).json({ error: 'PROVIDER_MODEL_NOT_CONFIGURED', models });
+    if (model !== 'auto' && !models.includes(model)) {
+      return res.status(400).json({ error: 'PROVIDER_MODEL_NOT_AVAILABLE', models });
+    }
+    const provider = markProviderReadyAfterVerification(id);
+    return res.status(200).json({ provider: provider ? serializeProvider(provider) : null, modelCount: models.length, models });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'PROVIDER_VERIFICATION_FAILED';
+    return res.status(502).json({ error: code });
+  }
+});
+
+providerRouter.patch('/:id/config', (_req, res) => {
+  return res.status(409).json({ error: 'PROVIDER_CONFIG_UPDATE_DISABLED_USE_ENVIRONMENT_SECRETS' });
+});
+
+providerRouter.patch('/:id/status', (req, res) => {
+  const parsed = statusSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'INVALID_PROVIDER_STATUS' });
+  const provider = setProviderStatus(req.params.id, parsed.data.status);
+  if (!provider) return res.status(404).json({ error: 'PROVIDER_NOT_FOUND' });
+  return res.status(200).json({ provider: serializeProvider(provider) });
+});
+
+providerRouter.patch('/:id/enabled', (req, res) => {
+  const parsed = enabledSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return res.status(400).json({ error: 'INVALID_PROVIDER_ENABLED_VALUE' });
+  try {
+    const provider = setProviderEnabled(req.params.id, parsed.data.enabled);
+    if (!provider) return res.status(404).json({ error: 'PROVIDER_NOT_FOUND' });
+    return res.status(200).json({ provider: serializeProvider(provider) });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'PROVIDER_NOT_READY') {
+      return res.status(409).json({ error: 'PROVIDER_NOT_READY' });
+    }
+    throw error;
+  }
+});
+
+========== FILE: server/routes/search.ts ==========
+
+import { Router } from 'express';
+import { z } from 'zod';
+import { searchMessagesPaginated } from '../db/repositories/messageRepository.js';
+
+const router = Router();
+
+const searchQuerySchema = z.object({
+  q: z.string().trim().min(1, 'Search query is required'),
+  page: z.coerce.number().int().min(1).max(1000000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+router.get('/', (req, res) => {
+  const validation = searchQuerySchema.safeParse(req.query);
+
+  if (!validation.success) {
+    return res.status(400).json({
+      success: false,
+      error: 'INVALID_SEARCH_PARAMETERS',
+      details: validation.error.issues.map(issue => ({
+        field: issue.path.join('.'),
+        message: issue.message,
+      })),
+    });
+  }
+
+  const { q, page, limit } = validation.data;
+
+  try {
+    const result = searchMessagesPaginated({
+      query: q,
+      page,
+      limit,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result.results,
+      pagination: {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'INVALID_SEARCH_PAGE'
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_SEARCH_PAGE',
+      });
+    }
+
+    console.error('Search API error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: 'SEARCH_FAILED',
+    });
+  }
+});
+
+export default router;
+
+========== FILE: server/routes/settings.ts ==========
+import { Router } from 'express';
+import { z } from 'zod';
+import {
+  getSetting,
+  getAllSettings,
+  setSetting,
+  setMultipleSettings,
+  deleteSetting,
+} from '../db/repositories/settingsRepository';
+
+export const settingsRouter = Router();
+
+const settingValueSchema = z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.record(z.string(), z.unknown()),
+  z.array(z.unknown()),
+  z.null(),
+]);
+
+const updateSettingSchema = z.object({
+  value: settingValueSchema,
+});
+
+const updateMultipleSettingsSchema = z.record(
+  z.string().min(1).max(100),
+  settingValueSchema
+);
+
+// GET: All settings
+settingsRouter.get('/', (_req, res) => {
+  return res.status(200).json({
+    settings: getAllSettings(),
+  });
+});
+
+// GET: Single setting
+settingsRouter.get('/:key', (req, res) => {
+  const settings = getAllSettings();
+  const key = req.params.key;
+
+  if (!Object.prototype.hasOwnProperty.call(settings, key)) {
+    return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
+  }
+
+  const value = settings[key];
+
+  return res.status(200).json({
+    key: req.params.key,
+    value,
+  });
+});
+
+// PATCH: Update one setting
+settingsRouter.patch('/:key', (req, res) => {
+  const parsed = updateSettingSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'INVALID_SETTING_DATA',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  setSetting(req.params.key, parsed.data.value);
+
+  return res.status(200).json({
+    success: true,
+    key: req.params.key,
+    value: parsed.data.value,
+  });
+});
+
+// PUT: Update multiple settings
+settingsRouter.put('/', (req, res) => {
+  const parsed = updateMultipleSettingsSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'INVALID_SETTINGS_DATA',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  setMultipleSettings(parsed.data);
+
+  return res.status(200).json({
+    success: true,
+    settings: getAllSettings(),
+  });
+});
+
+// DELETE: Remove one setting
+settingsRouter.delete('/:key', (req, res) => {
+  const deleted = deleteSetting(req.params.key);
+
+  if (!deleted) {
+    return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
+  }
+
+  return res.status(200).json({ success: true });
+});
+
+========== FILE: server/routes/threads.ts ==========
+import { Router } from 'express';
+import { z } from 'zod';
+import {
+  createThread,
+  getAllThreads,
+  getThreadById,
+  updateThreadTitle,
+  deleteThread,
+} from '../db/repositories/threadRepository';
+
+export const threadRouter = Router();
+
+const createThreadSchema = z.object({
+  title: z.string().trim().min(1).max(120).optional(),
+});
+
+const updateThreadSchema = z.object({
+  title: z.string().trim().min(1).max(120),
+});
+
+// GET: List all threads
+threadRouter.get('/', (_req, res) => {
+  const threads = getAllThreads();
+  return res.status(200).json({ threads });
+});
+
+// POST: Create a new thread
+threadRouter.post('/', (req, res) => {
+  const parsed = createThreadSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'INVALID_THREAD_DATA',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const thread = createThread(parsed.data.title);
+  return res.status(201).json({ thread });
+});
+
+// GET: Get one thread
+threadRouter.get('/:threadId', (req, res) => {
+  const thread = getThreadById(req.params.threadId);
+
+  if (!thread) {
+    return res.status(404).json({ error: 'THREAD_NOT_FOUND' });
+  }
+
+  return res.status(200).json({ thread });
+});
+
+// PATCH: Rename a thread
+threadRouter.patch('/:threadId', (req, res) => {
+  const parsed = updateThreadSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    return res.status(400).json({
+      error: 'INVALID_THREAD_DATA',
+      details: parsed.error.flatten().fieldErrors,
+    });
+  }
+
+  const thread = updateThreadTitle(req.params.threadId, parsed.data.title);
+
+  if (!thread) {
+    return res.status(404).json({ error: 'THREAD_NOT_FOUND' });
+  }
+
+  return res.status(200).json({ thread });
+});
+
+// DELETE: Delete a thread
+threadRouter.delete('/:threadId', (req, res) => {
+  const deleted = deleteThread(req.params.threadId);
+
+  if (!deleted) {
+    return res.status(404).json({ error: 'THREAD_NOT_FOUND' });
+  }
+
+  return res.status(200).json({ success: true });
+});
+
+========== FILE: server/services/brainManager.ts ==========
+import { getProviderById, type Provider } from '../db/repositories/providerRepository.js';
+import { getProviderAdapter } from './providerRegistry.js';
+import type { ProviderGenerationRequest, ProviderGenerationResponse } from './providerAdapter.js';
+import { ProviderRequestError } from './providerAdapter.js';
+
+export type BrainProviderId = 'omniroute' | 'freellmapi';
+
+function otherProvider(id: BrainProviderId): BrainProviderId {
+  return id === 'omniroute' ? 'freellmapi' : 'omniroute';
+}
+
+function getReadyProvider(id: BrainProviderId): { provider: Provider; adapter: NonNullable<ReturnType<typeof getProviderAdapter>> } {
+  const provider = getProviderById(id);
+  const adapter = getProviderAdapter(id);
+  if (!provider || !adapter || provider.status !== 'ready' || provider.enabled !== 1) {
+    throw new ProviderRequestError(id, 'PROVIDER_NOT_READY', undefined, true);
+  }
+  return { provider, adapter };
+}
+
+function canFailover(error: unknown): boolean {
+  return error instanceof ProviderRequestError && error.recoverable;
+}
+
+function getProviderOrder(selected?: string): BrainProviderId[] {
+  const primary = selected === 'freellmapi' ? 'freellmapi' : 'omniroute';
+  return [primary, otherProvider(primary)];
+}
+
+export async function generateWithFailover(
+  request: ProviderGenerationRequest,
+  selectedProvider?: string,
+): Promise<ProviderGenerationResponse & { providerId: BrainProviderId }> {
+  let lastError: unknown;
+  const order = getProviderOrder(selectedProvider);
+
+  for (let index = 0; index < order.length; index += 1) {
+    const providerId = order[index];
+    try {
+      const { adapter } = getReadyProvider(providerId);
+      const result = await adapter.generate(request);
+      return { ...result, providerId };
+    } catch (error) {
+      lastError = error;
+      if (!canFailover(error) || index === order.length - 1) throw error;
+    }
+  }
+
+  throw lastError ?? new ProviderRequestError('omniroute', 'NO_PROVIDER_AVAILABLE');
+}
+
+export async function streamWithFailover(
+  request: ProviderGenerationRequest,
+  selectedProvider: string | undefined,
+  onToken: (token: string) => void,
+): Promise<ProviderGenerationResponse & { providerId: BrainProviderId }> {
+  let lastError: unknown;
+  const order = getProviderOrder(selectedProvider);
+
+  for (let index = 0; index < order.length; index += 1) {
+    const providerId = order[index];
+    let emittedToken = false;
+    try {
+      const { adapter } = getReadyProvider(providerId);
+      const result = await adapter.stream(request, (token) => {
+        emittedToken = true;
+        onToken(token);
+      });
+      return { ...result, providerId };
+    } catch (error) {
+      lastError = error;
+      // Never switch providers after sending partial text to the client.
+      if (emittedToken || !canFailover(error) || index === order.length - 1) throw error;
+    }
+  }
+
+  throw lastError ?? new ProviderRequestError('omniroute', 'NO_PROVIDER_AVAILABLE');
+}
+
+export async function verifyProvider(providerId: BrainProviderId): Promise<string[]> {
+  const adapter = getProviderAdapter(providerId);
+  if (!adapter) throw new ProviderRequestError(providerId, 'PROVIDER_ADAPTER_NOT_REGISTERED');
+  return adapter.verify();
+}
+
+========== FILE: server/services/chatService.ts ==========
+import {
+  createMessage,
+  getMessageById,
+  getMessagesByThread,
+  type Message,
+} from '../db/repositories/messageRepository.js';
+
+import {
+  claimChatRequest,
+  completeChatRequest,
+  releaseChatRequest,
+} from '../db/repositories/chatRequestRepository.js';
+
+import { getThreadById } from '../db/repositories/threadRepository.js';
+import {
+  streamWithFailover,
+  type BrainProviderId,
+} from './brainManager.js';
+
+import type { ChatMessage } from './providerAdapter.js';
+
+export interface SendChatMessageParams {
+  threadId: string;
+  content: string;
+  providerId?: string;
+  clientMessageId: string;
+  signal?: AbortSignal;
+  onToken: (token: string) => void;
+}
+
+export interface SendChatMessageResult {
+  userMessage: Message;
+  assistantMessage: Message;
+  providerId: BrainProviderId;
+  model?: string;
+  replayed?: boolean;
+}
+
+export class ChatServiceError extends Error {
+  constructor(public readonly code: string, message = code) {
+    super(message);
+    this.name = 'ChatServiceError';
+  }
+}
+
+export async function sendChatMessage(
+  params: SendChatMessageParams,
+): Promise<SendChatMessageResult> {
+  const threadId = params.threadId.trim();
+  const content = params.content.trim();
+  const clientMessageId = params.clientMessageId.trim();
+
+  if (!threadId) {
+    throw new ChatServiceError('THREAD_ID_REQUIRED');
+  }
+
+  if (!content) {
+    throw new ChatServiceError('MESSAGE_CONTENT_REQUIRED');
+  }
+
+  if (!clientMessageId || clientMessageId.length > 80) {
+    throw new ChatServiceError('CLIENT_MESSAGE_ID_REQUIRED');
+  }
+
+  if (!getThreadById(threadId)) {
+    throw new ChatServiceError('THREAD_NOT_FOUND');
+  }
+
+  // Claim the request BEFORE creating the user message.
+  const claim = claimChatRequest(
+    clientMessageId,
+    threadId,
+    clientMessageId,
+  );
+
+  if (!claim.claimed) {
+    if (claim.record.thread_id !== threadId) {
+      throw new ChatServiceError('CLIENT_MESSAGE_ID_CONFLICT');
+    }
+
+    if (
+      claim.record.status === 'completed' &&
+      claim.record.assistant_message_id
+    ) {
+      const userMessage = getMessageById(
+        claim.record.user_message_id,
+      );
+
+      const assistantMessage = getMessageById(
+        claim.record.assistant_message_id,
+      );
+
+      if (
+        userMessage &&
+        assistantMessage &&
+        claim.record.provider_id
+      ) {
+        return {
+          userMessage,
+          assistantMessage,
+          providerId: claim.record.provider_id as BrainProviderId,
+          model: claim.record.model ?? undefined,
+          replayed: true,
+        };
+      }
+    }
+
+    throw new ChatServiceError(
+      'CHAT_REQUEST_ALREADY_IN_PROGRESS',
+    );
+  }
+
+  try {
+    // Create the user message only after successfully claiming.
+    const userMessage = createMessage(
+      threadId,
+      'user',
+      content,
+      clientMessageId,
+    );
+
+    const history = getMessagesByThread(threadId).slice(-21);
+
+    const messages: ChatMessage[] = history.map((message) => ({
+      role: message.role,
+      content: message.content,
+    }));
+
+    const response = await streamWithFailover(
+      {
+        messages,
+        signal: params.signal,
+      },
+      params.providerId,
+      params.onToken,
+    );
+
+    const assistantMessage = createMessage(
+      threadId,
+      'assistant',
+      response.content,
+    );
+
+    completeChatRequest(
+      clientMessageId,
+      assistantMessage.id,
+      response.providerId,
+      response.model,
+    );
+
+    return {
+      userMessage,
+      assistantMessage,
+      providerId: response.providerId,
+      model: response.model,
+    };
+  } catch (error) {
+    releaseChatRequest(clientMessageId);
+    throw error;
+  }
+}
+========== FILE: server/services/openAICompatibleAdapter.ts ==========
+
+import type {
+  ChatMessage,
+  ProviderAdapter,
+  ProviderGenerationRequest,
+  ProviderGenerationResponse,
+  ProviderUsage,
+} from './providerAdapter.js';
+import { ProviderRequestError } from './providerAdapter.js';
+
+interface AdapterOptions {
+  providerId: 'omniroute' | 'freellmapi';
+  baseUrl: string;
+  apiKey: () => string | undefined;
+  defaultModel: () => string | undefined;
+  timeoutMs: number;
+}
+
+interface ChatCompletionPayload {
+  model?: string;
+  choices?: Array<{
+    message?: { content?: string | Array<{ type?: string; text?: string }> };
+    delta?: { content?: string | Array<{ type?: string; text?: string }> };
+    finish_reason?: string | null;
+  }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  error?: { message?: string; code?: string };
+}
+
+interface RequestSignals {
+  signal: AbortSignal;
+  timeoutSignal: AbortSignal;
+  parentSignal?: AbortSignal;
+}
+
+function contentToText(value: unknown): string {
+  if (typeof value === 'string') return value;
+
+  if (!Array.isArray(value)) return '';
+
+  return value
+    .map((part) => {
+      if (
+        part &&
+        typeof part === 'object' &&
+        'text' in part &&
+        typeof part.text === 'string'
+      ) {
+        return part.text;
+      }
+
+      return '';
+    })
+    .join('');
+}
+
+function mapUsage(
+  usage?: ChatCompletionPayload['usage'],
+): ProviderUsage | undefined {
+  if (!usage) return undefined;
+
+  return {
+    promptTokens: usage.prompt_tokens,
+    completionTokens: usage.completion_tokens,
+    totalTokens: usage.total_tokens,
+  };
+}
+
+export class OpenAICompatibleAdapter implements ProviderAdapter {
+  readonly providerId: 'omniroute' | 'freellmapi';
+
+  private readonly baseUrl: string;
+  private readonly getApiKey: () => string | undefined;
+  private readonly getDefaultModel: () => string | undefined;
+  private readonly timeoutMs: number;
+
+  constructor(options: AdapterOptions) {
+    this.providerId = options.providerId;
+    this.baseUrl = options.baseUrl.replace(/\/+$/, '');
+    this.getApiKey = options.apiKey;
+    this.getDefaultModel = options.defaultModel;
+    this.timeoutMs = options.timeoutMs;
+  }
+
+  private credentials(): { key: string; model: string } {
+    const key = this.getApiKey()?.trim();
+    const model = this.getDefaultModel()?.trim();
+
+    if (!key) {
+      throw new ProviderRequestError(
+        this.providerId,
+        'API_KEY_NOT_CONFIGURED',
+        undefined,
+        true,
+      );
+    }
+
+    return {
+      key,
+      model: model ?? '',
+    };
+  }
+
+  private createRequestSignals(parentSignal?: AbortSignal): RequestSignals {
+    const timeoutSignal = AbortSignal.timeout(this.timeoutMs);
+
+    return {
+      signal: parentSignal
+        ? AbortSignal.any([parentSignal, timeoutSignal])
+        : timeoutSignal,
+      timeoutSignal,
+      parentSignal,
+    };
+  }
+
+  private normalizeError(
+    error: unknown,
+    signals: RequestSignals,
+    fallbackCode: string,
+  ): ProviderRequestError {
+    if (error instanceof ProviderRequestError) {
+      return error;
+    }
+
+    // User cancellation must never trigger automatic failover.
+    if (signals.parentSignal?.aborted) {
+      return new ProviderRequestError(
+        this.providerId,
+        'REQUEST_ABORTED',
+      );
+    }
+
+    // Timeout is recoverable and may use the backup provider.
+    if (signals.timeoutSignal.aborted) {
+      return new ProviderRequestError(
+        this.providerId,
+        'PROVIDER_TIMEOUT',
+        undefined,
+        true,
+      );
+    }
+
+    return new ProviderRequestError(
+      this.providerId,
+      fallbackCode,
+      undefined,
+      true,
+    );
+  }
+
+  private async fetchWithTimeout(
+    path: string,
+    init: RequestInit,
+    signals: RequestSignals,
+    apiKey: string,
+  ): Promise<Response> {
+    try {
+      return await fetch(`${this.baseUrl}${path}`, {
+        ...init,
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          ...(init.headers ?? {}),
+        },
+        signal: signals.signal,
+      });
+    } catch (error) {
+      throw this.normalizeError(
+        error,
+        signals,
+        'PROVIDER_CONNECTION_FAILED',
+      );
+    }
+  }
+
+  private async assertResponse(response: Response): Promise<void> {
+    if (response.ok) return;
+
+    const recoverable =
+      response.status === 408 ||
+      response.status === 429 ||
+      response.status >= 500;
+
+    const code =
+      response.status === 401 || response.status === 403
+        ? 'PROVIDER_AUTHENTICATION_FAILED'
+        : response.status === 429
+          ? 'PROVIDER_RATE_LIMITED'
+          : response.status >= 500
+            ? 'PROVIDER_SERVER_ERROR'
+            : `PROVIDER_HTTP_${response.status}`;
+
+    throw new ProviderRequestError(
+      this.providerId,
+      code,
+      response.status,
+      recoverable,
+    );
+  }
+
+  async verify(): Promise<string[]> {
+    const { key } = this.credentials();
+    const signals = this.createRequestSignals();
+
+    try {
+      const response = await this.fetchWithTimeout(
+        '/models',
+        { method: 'GET' },
+        signals,
+        key,
+      );
+
+      await this.assertResponse(response);
+
+      const payload = (await response.json()) as {
+        data?: Array<{ id?: string }>;
+      };
+
+      return (payload.data ?? [])
+        .map((item) => item.id)
+        .filter((id): id is string => Boolean(id));
+    } catch (error) {
+      throw this.normalizeError(
+        error,
+        signals,
+        'PROVIDER_VERIFICATION_FAILED',
+      );
+    }
+  }
+
+  async generate(
+    request: ProviderGenerationRequest,
+  ): Promise<ProviderGenerationResponse> {
+    const { key, model: defaultModel } = this.credentials();
+
+    if (!request.model && !defaultModel) {
+      throw new ProviderRequestError(
+        this.providerId,
+        'MODEL_NOT_CONFIGURED',
+        undefined,
+        true,
+      );
+    }
+
+    const signals = this.createRequestSignals(request.signal);
+
+    try {
+      const response = await this.fetchWithTimeout(
+        '/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: request.model ?? defaultModel,
+            messages: request.messages,
+            temperature: request.temperature,
+            max_tokens: request.maxTokens,
+            stream: false,
+          }),
+        },
+        signals,
+        key,
+      );
+
+      await this.assertResponse(response);
+
+      const payload = (await response.json()) as ChatCompletionPayload;
+      const content = contentToText(
+        payload.choices?.[0]?.message?.content,
+      );
+
+      if (!content) {
+        throw new ProviderRequestError(
+          this.providerId,
+          'PROVIDER_EMPTY_RESPONSE',
+          undefined,
+          true,
+        );
+      }
+
+      return {
+        content,
+        model: payload.model,
+        usage: mapUsage(payload.usage),
+      };
+    } catch (error) {
+      throw this.normalizeError(
+        error,
+        signals,
+        'PROVIDER_REQUEST_FAILED',
+      );
+    }
+  }
+
+  async stream(
+    request: ProviderGenerationRequest,
+    onToken: (token: string) => void,
+  ): Promise<ProviderGenerationResponse> {
+    const { key, model: defaultModel } = this.credentials();
+
+    if (!request.model && !defaultModel) {
+      throw new ProviderRequestError(
+        this.providerId,
+        'MODEL_NOT_CONFIGURED',
+        undefined,
+        true,
+      );
+    }
+
+    const signals = this.createRequestSignals(request.signal);
+
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+
+    try {
+      const response = await this.fetchWithTimeout(
+        '/chat/completions',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          body: JSON.stringify({
+            model: request.model ?? defaultModel,
+            messages: request.messages,
+            temperature: request.temperature,
+            max_tokens: request.maxTokens,
+            stream: true,
+          }),
+        },
+        signals,
+        key,
+      );
+
+      await this.assertResponse(response);
+
+      if (!response.body) {
+        throw new ProviderRequestError(
+          this.providerId,
+          'PROVIDER_STREAM_UNAVAILABLE',
+          undefined,
+          true,
+        );
+      }
+
+      reader = response.body.getReader();
+
+      const decoder = new TextDecoder();
+
+      let buffer = '';
+      let content = '';
+      let responseModel: string | undefined;
+      let usage: ProviderUsage | undefined;
+
+      const consumeEvent = (event: string): void => {
+        const data = event
+          .split('\n')
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => line.slice(5).trim())
+          .join('\n');
+
+        if (!data || data === '[DONE]') return;
+
+        let payload: ChatCompletionPayload;
+
+        try {
+          payload = JSON.parse(data) as ChatCompletionPayload;
+        } catch {
+          return;
+        }
+
+        if (payload.error) {
+          throw new ProviderRequestError(
+            this.providerId,
+            'PROVIDER_STREAM_ERROR',
+            undefined,
+            true,
+          );
+        }
+
+        responseModel = payload.model ?? responseModel;
+        usage = mapUsage(payload.usage) ?? usage;
+
+        const token = contentToText(
+          payload.choices?.[0]?.delta?.content,
+        );
+
+        if (token) {
+          content += token;
+          onToken(token);
+        }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder
+          .decode(value, { stream: true })
+          .replace(/\r\n/g, '\n');
+
+        let boundary = buffer.indexOf('\n\n');
+
+        while (boundary >= 0) {
+          const event = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+
+          consumeEvent(event);
+
+          boundary = buffer.indexOf('\n\n');
+        }
+      }
+
+      buffer += decoder.decode();
+
+      if (buffer.trim()) {
+        consumeEvent(buffer);
+      }
+
+      if (!content) {
+        throw new ProviderRequestError(
+          this.providerId,
+          'PROVIDER_EMPTY_RESPONSE',
+          undefined,
+          true,
+        );
+      }
+
+      return {
+        content,
+        model: responseModel,
+        usage,
+      };
+    } catch (error) {
+      await reader?.cancel().catch(() => undefined);
+
+      throw this.normalizeError(
+        error,
+        signals,
+        'PROVIDER_STREAM_INTERRUPTED',
+      );
+    } finally {
+      reader?.releaseLock();
+    }
+  }
+}
+
+export type { ChatMessage };
+
+========== FILE: server/services/providerAdapter.ts ==========
+export type ChatMessageRole = 'system' | 'user' | 'assistant';
+
+export interface ChatMessage {
+  role: ChatMessageRole;
+  content: string;
+}
+
+export interface ProviderGenerationRequest {
+  messages: ChatMessage[];
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  signal?: AbortSignal;
+}
+
+export interface ProviderUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+export interface ProviderGenerationResponse {
+  content: string;
+  model?: string;
+  usage?: ProviderUsage;
+}
+
+export interface ProviderAdapter {
+  readonly providerId: string;
+  generate(request: ProviderGenerationRequest): Promise<ProviderGenerationResponse>;
+  stream(
+    request: ProviderGenerationRequest,
+    onToken: (token: string) => void,
+  ): Promise<ProviderGenerationResponse>;
+  verify(): Promise<string[]>;
+}
+
+export class ProviderRequestError extends Error {
+  constructor(
+    public readonly providerId: string,
+    public readonly code: string,
+    public readonly status?: number,
+    public readonly recoverable = false,
+  ) {
+    super(code);
+    this.name = 'ProviderRequestError';
+  }
+}
+
+========== FILE: server/services/providerAdapters.ts ==========
+import { config } from '../config.js';
+import { OpenAICompatibleAdapter } from './openAICompatibleAdapter.js';
+import { registerProviderAdapter } from './providerRegistry.js';
+
+let initialized = false;
+
+export function initializeProviderAdapters(): void {
+  if (initialized) return;
+
+  registerProviderAdapter(new OpenAICompatibleAdapter({
+    providerId: 'omniroute',
+    baseUrl: config.omniRouteBaseUrl,
+    apiKey: () => process.env.OMNIROUTE_API_KEY,
+    defaultModel: () => process.env.OMNIROUTE_MODEL,
+    timeoutMs: config.providerTimeoutMs,
+  }));
+
+  registerProviderAdapter(new OpenAICompatibleAdapter({
+    providerId: 'freellmapi',
+    baseUrl: config.freeLlmApiBaseUrl,
+    apiKey: () => process.env.FREELLMAPI_API_KEY,
+    defaultModel: () => process.env.FREELLMAPI_MODEL,
+    timeoutMs: config.providerTimeoutMs,
+  }));
+
+  initialized = true;
+}
+
+========== FILE: server/services/providerRegistry.ts ==========
+
+import type { ProviderAdapter } from './providerAdapter.js';
+
+const adapters = new Map<string, ProviderAdapter>();
+
+export function registerProviderAdapter(
+  adapter: ProviderAdapter
+): void {
+  const providerId = adapter.providerId.trim();
+
+  if (!providerId) {
+    throw new Error('PROVIDER_ID_REQUIRED');
+  }
+
+  if (adapters.has(providerId)) {
+    throw new Error('PROVIDER_ADAPTER_ALREADY_REGISTERED');
+  }
+
+  adapters.set(providerId, adapter);
+}
+
+export function getProviderAdapter(
+  providerId: string
+): ProviderAdapter | undefined {
+  return adapters.get(providerId.trim());
+}
+
+export function hasProviderAdapter(providerId: string): boolean {
+  return adapters.has(providerId.trim());
+}
+
+export function unregisterProviderAdapter(providerId: string): boolean {
+  return adapters.delete(providerId.trim());
+}
+
+export function getRegisteredProviderIds(): string[] {
+  return Array.from(adapters.keys());
+}
+
+========== FILE: server/services/secretStore.ts ==========
+export type SecretProviderId = 'omniroute' | 'freellmapi';
+
+const PROVIDER_SECRET_ENV: Record<SecretProviderId, string> = {
+  omniroute: 'OMNIROUTE_API_KEY',
+  freellmapi: 'FREELLMAPI_API_KEY',
+};
+
+/**
+ * Reads a provider API key from the process environment.
+ * Secrets are never persisted to SQLite or returned by API routes.
+ */
+export function getProviderApiKey(
+  providerId: SecretProviderId
+): string | undefined {
+  const envName = PROVIDER_SECRET_ENV[providerId];
+  const value = process.env[envName];
+
+  if (typeof value !== 'string' || value.length === 0) {
+    return undefined;
+  }
+
+  return value;
+}
+
+/**
+ * Checks whether a provider API key is configured.
+ * Does not reveal or return the secret itself.
+ */
+export function hasProviderApiKey(
+  providerId: SecretProviderId
+): boolean {
+  return getProviderApiKey(providerId) !== undefined;
+}
+
+========== FILE: src/App.css ==========
+.zara-shell{height:100dvh;min-height:620px;display:flex;overflow:hidden;background:radial-gradient(ellipse at 55% 45%,#111a4a 0,#080d27 42%,#040716 100%);color:#f4f6ff}.sidebar{width:214px;flex:0 0 214px;display:flex;flex-direction:column;padding:20px 14px 16px;background:linear-gradient(180deg,rgba(4,8,27,.97),rgba(7,10,32,.96));border-right:1px solid rgba(100,133,255,.32);box-shadow:8px 0 35px rgba(0,0,0,.3);z-index:3}.brand-lockup{height:92px;display:flex;align-items:center;gap:12px;padding:0 7px 16px;border-bottom:1px solid rgba(115,135,255,.18)}.brand-mark{width:58px;height:58px;display:grid;place-items:center;border-radius:50%;color:#c8c4ff;background:linear-gradient(145deg,#3213a9,#101f76 60%,#06a9e8);border:2px solid #6d76ff;box-shadow:0 0 20px #3827d9, inset 0 0 12px #9b8cff}.brand-name{font-size:27px;font-weight:800;letter-spacing:2px;text-shadow:0 0 16px #6b8cff}.brand-subtitle{font-size:9px;color:#c1c8e9;white-space:nowrap}.nav-list{display:flex;flex-direction:column;gap:8px;margin-top:26px}.nav-item{height:48px;display:flex;align-items:center;gap:14px;padding:0 13px;border-radius:13px;border:1px solid transparent;background:transparent;color:#e2e8ff;text-align:left;font-size:14px;transition:.18s}.nav-item:hover{background:rgba(72,68,207,.2);border-color:rgba(114,114,255,.3)}.nav-item.active{background:linear-gradient(100deg,#6a27ff,#2511a9 90%);border-color:#9b7dff;box-shadow:0 0 19px rgba(101,50,255,.75),inset 0 0 12px rgba(255,255,255,.14);color:white}.sidebar-love{margin-top:auto;margin-bottom:18px;display:flex;align-items:center;gap:11px;padding:12px 13px;border:1px solid #653eff;border-radius:13px;color:#b9a0ff;background:rgba(40,18,114,.32);font-style:italic;font-weight:600;box-shadow:0 0 15px rgba(102,55,255,.24)}.profile-card{height:67px;display:flex;align-items:center;gap:9px;padding:8px;border-radius:16px;background:linear-gradient(110deg,#171c55,#11152f);border:1px solid #665cff;box-shadow:0 0 18px rgba(70,70,255,.3)}.profile-avatar{width:45px;height:45px;overflow:hidden;border-radius:50%;border:2px solid #66caff}.profile-avatar img{width:100%;height:100%;object-fit:cover;object-position:50% 30%}.profile-card strong{display:flex;align-items:center;gap:4px;font-size:13px}.profile-card strong svg{color:#22aaff;fill:#22aaff}.profile-card small{display:flex;align-items:center;gap:5px;margin-top:4px;font-size:10px}.profile-card small i,.online-pill i{width:8px;height:8px;border-radius:50%;background:#00f28a;box-shadow:0 0 10px #00e78b}.profile-arrow{margin-left:auto}.main-area{flex:1;min-width:0;display:flex;flex-direction:column}.topbar{height:70px;flex:0 0 70px;display:flex;align-items:center;justify-content:flex-end;gap:25px;padding:0 25px;border-bottom:1px solid rgba(91,117,255,.22);background:rgba(4,8,27,.65);z-index:2}.online-pill{display:flex;align-items:center;gap:10px;padding:9px 16px;border:1px solid rgba(34,132,255,.48);border-radius:24px;background:rgba(5,16,49,.85);font-weight:700;color:#00f59a;box-shadow:0 0 16px rgba(25,105,255,.15)}.online-pill.is-offline{color:#ff8383}.online-pill.is-offline i{background:#ff5b68;box-shadow:0 0 10px #ff5b68}.top-actions{display:flex;align-items:center;gap:13px}.top-actions button{width:34px;height:34px;border:0;background:transparent;color:#e5eaff}.top-actions button:hover{color:#58d9ff}.window-dots{margin-left:6px;color:#e3e8ff;font-size:18px;white-space:nowrap}.mobile-brand{display:none}.dashboard-grid{height:calc(100% - 70px);min-height:0;display:grid;grid-template-columns:minmax(360px,1fr) 350px;gap:18px;padding:18px 18px 20px}.hero-stage{position:relative;min-width:0;overflow:hidden;border:1px solid rgba(80,119,255,.24);border-radius:24px;background:radial-gradient(ellipse at 50% 43%,rgba(42,73,201,.34),transparent 48%),linear-gradient(150deg,#101a49,#080d2b 55%,#07112c);box-shadow:inset 0 0 50px rgba(31,84,255,.12),0 14px 45px rgba(0,0,0,.25)}.hero-stage:before{content:"";position:absolute;inset:0;background:linear-gradient(0deg,rgba(4,8,27,.95),transparent 30%,transparent 75%,rgba(4,8,27,.22));z-index:1;pointer-events:none}.hero-glow{position:absolute;width:66%;height:24%;left:17%;top:-8%;border:8px solid rgba(16,147,255,.75);border-radius:50%;filter:blur(8px);box-shadow:0 0 35px #008dff, inset 0 0 35px #235fff}.hero-character{position:absolute;height:91%;max-width:83%;width:auto;left:50%;bottom:0;transform:translateX(-50%);object-fit:contain;object-position:center bottom;filter:drop-shadow(0 0 25px rgba(41,99,255,.28));z-index:0}.welcome-bubble{position:absolute;top:8%;left:5%;z-index:2;padding:16px 19px;border:1px solid #59aaff;border-radius:18px;background:rgba(5,11,38,.88);box-shadow:0 0 18px rgba(31,99,255,.45);font-size:clamp(13px,1.25vw,18px);line-height:1.65}.welcome-bubble strong{font-size:1.08em}.welcome-bubble em{color:#8daaff;font-style:normal;font-weight:700}.hero-brand{position:absolute;right:6%;top:30%;display:flex;flex-direction:column;align-items:center;color:#76a8ff;text-shadow:0 0 18px #2e7aff;z-index:1}.hero-brand b{font-size:76px;line-height:.9;font-style:italic}.hero-brand strong{font-size:29px;letter-spacing:5px}.hero-brand small{font-size:11px;font-style:italic;color:#9aafff}.talk-dock{position:absolute;z-index:3;left:50%;bottom:24px;transform:translateX(-50%);width:min(92%,690px);height:76px;display:flex;align-items:center;justify-content:space-around;gap:12px;padding:8px 20px;border:1px solid #5d5aff;border-radius:45px;background:linear-gradient(90deg,rgba(9,13,45,.97),rgba(12,19,75,.96));box-shadow:0 0 28px rgba(56,68,255,.6),inset 0 0 16px rgba(92,97,255,.18)}.talk-dock span{font-size:14px;white-space:nowrap}.talk-dock button{width:46px;height:46px;display:grid;place-items:center;border-radius:50%;border:1px solid #664cff;color:#fff;background:#15135b;box-shadow:0 0 12px rgba(112,55,255,.4)}.talk-dock .wave-icon{color:#9d7bff}.talk-dock .mic-main{width:86px;height:86px;flex:0 0 86px;border:4px solid #7b8bff;background:linear-gradient(145deg,#8e43ff,#1a4cff);box-shadow:0 0 0 7px rgba(69,88,255,.3),0 0 28px #236eff}.right-rail{min-height:0;display:flex;flex-direction:column;gap:15px}.glass-card{border:1px solid rgba(82,124,255,.72);border-radius:22px;padding:16px;background:linear-gradient(145deg,rgba(10,15,48,.96),rgba(5,9,29,.97));box-shadow:0 0 19px rgba(32,84,255,.22),inset 0 0 18px rgba(54,73,185,.12)}.card-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}.card-heading h2{display:flex;align-items:center;gap:9px;margin:0;font-size:16px}.card-heading h2 svg{color:#35ddff;filter:drop-shadow(0 0 6px currentColor)}.card-heading button{display:flex;align-items:center;gap:4px;border:0;background:transparent;color:#9b92ff;font-size:12px}.quick-actions{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.quick-actions button{min-width:0;min-height:110px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border:1px solid rgba(87,74,255,.28);border-radius:15px;background:linear-gradient(160deg,#2614a0,#11134c);color:#fff;font-size:12px;line-height:1.4;text-align:center}.quick-actions button:nth-child(3){background:linear-gradient(160deg,#073d53,#082343)}.quick-actions button svg{width:29px;height:29px;color:#9f8bff;filter:drop-shadow(0 0 7px #805fff)}.quick-actions button:nth-child(3) svg{color:#00f3c4}.skills-card{flex:1;min-height:190px}.skill-list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}.skill-list li{display:flex;align-items:center;gap:12px;color:#e5e9ff;font-size:13px}.skill-list svg{width:28px;height:28px;padding:5px;border-radius:8px;background:#2114a0;color:#8fbcff}.skill-list li:nth-child(2) svg{background:#074e72;color:#53d9ff}.skill-list li:nth-child(4) svg{background:#7613a3;color:#f0a4ff}.status-card{min-height:140px}.status-row{display:flex;justify-content:space-between;gap:8px;margin:10px 0;color:#c8d1f2;font-size:12px}.status-row b{color:#e7eaff;font-weight:600}.status-row .green-text{color:#00e99a}.status-row .red-text{color:#ff7777}.chat-page,.settings-page{height:100%;min-height:0;display:flex;flex-direction:column;padding:25px 30px;background:radial-gradient(ellipse at 50% 0,rgba(36,51,145,.18),transparent 55%)}.chat-toolbar{display:flex;align-items:center;gap:15px;padding-bottom:18px;border-bottom:1px solid rgba(120,135,255,.2)}.chat-toolbar h1,.section-title h1{margin:0;font-size:23px}.chat-toolbar p,.section-title p{margin:6px 0 0;color:#99a5ce;font-size:12px}.provider-select{margin-left:auto;display:flex;align-items:center;gap:8px;color:#aab4db;font-size:12px}.provider-select select{padding:9px 12px;border:1px solid #4848a5;border-radius:10px;background:#0d1239;color:#fff}.new-chat-button,.coming-page button{padding:10px 15px;border:1px solid #6e62ff;border-radius:10px;background:linear-gradient(110deg,#6127db,#1837a8);color:white}.chat-messages{flex:1;min-height:0;overflow:auto;padding:22px max(2%,calc((100% - 850px)/2))}.chat-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}.empty-orb{width:72px;height:72px;display:grid;place-items:center;border-radius:50%;color:#c6baff;background:radial-gradient(circle,#5d35de,#15145b);box-shadow:0 0 35px #4234e4}.chat-empty h2{margin:18px 0 6px;font-size:24px}.chat-empty p{color:#9ba6cf;font-size:13px}.suggestion-row{display:flex;gap:9px;margin-top:14px}.suggestion-row button{padding:9px 12px;border:1px solid #454c9a;border-radius:20px;background:#101741;color:#cfd5ff;font-size:11px}.message-row{display:flex;gap:12px;margin:0 auto 20px;max-width:850px}.message-avatar{width:34px;height:34px;flex:0 0 34px;display:grid;place-items:center;border-radius:50%;background:#34218e;color:#fff;font-size:11px;font-weight:700}.message-row.user .message-avatar{background:#124e75}.message-content{min-width:0;flex:1;padding:12px 15px;border:1px solid rgba(89,103,209,.3);border-radius:5px 15px 15px 15px;background:rgba(13,20,57,.8)}.message-row.user .message-content{background:rgba(9,38,70,.72)}.message-content strong{font-size:11px;color:#9eacff}.message-content p{margin:7px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.65}.composer-wrap{width:min(100%,900px);margin:0 auto}.composer{display:flex;align-items:center;gap:10px;padding:9px 11px 9px 17px;border:1px solid #5750ce;border-radius:17px;background:#0b1031;box-shadow:0 0 18px rgba(73,55,255,.18)}.composer textarea{flex:1;resize:none;max-height:140px;min-height:26px;border:0;outline:0;background:transparent;color:#fff;font-size:13px}.send-button{width:40px;height:40px;display:grid;place-items:center;border:0;border-radius:12px;background:linear-gradient(140deg,#762cff,#1559d9);color:#fff}.send-button:disabled{opacity:.4;cursor:not-allowed}.composer-wrap>small{display:block;margin-top:8px;text-align:center;color:#7e8ab5;font-size:10px}.section-title{margin-bottom:20px}.provider-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.provider-card{padding:18px;border:1px solid rgba(95,112,255,.45);border-radius:17px;background:rgba(9,15,48,.84)}.provider-card-top{display:flex;align-items:center;gap:12px}.provider-symbol{width:42px;height:42px;display:grid;place-items:center;border-radius:13px;background:linear-gradient(145deg,#4d2bdb,#17185b);font-size:21px;font-weight:800}.provider-symbol.freellmapi{background:linear-gradient(145deg,#087b9c,#10315c)}.provider-card h2{margin:0;font-size:16px}.provider-card p{margin:4px 0 0;color:#929ec8;font-size:11px}.provider-status{margin-left:auto;padding:6px 9px;border-radius:20px;background:#28264b;color:#c2b8ff;font-size:10px}.provider-status.ready{background:rgba(0,145,91,.18);color:#3ef0b0}.provider-meta{display:flex;justify-content:space-between;gap:10px;margin:20px 0;color:#8d99c2;font-size:11px}.provider-meta b{color:#e5eaff}.provider-buttons{display:flex;gap:9px}.provider-buttons button{padding:9px 12px;border:1px solid #6255ed;border-radius:9px;background:#2a197f;color:white;font-size:11px}.provider-buttons .secondary-button{background:#101b48;border-color:#3c4c9a}.provider-buttons button:disabled{opacity:.4;cursor:not-allowed}.notice-card{display:flex;gap:12px;margin-top:18px;padding:15px;border:1px solid rgba(31,176,205,.35);border-radius:14px;background:rgba(7,53,76,.24);color:#9cecff}.notice-card p{margin:5px 0 0;color:#aebcdb;font-size:11px;line-height:1.6}.notice-card code{color:#c6baff}.coming-page{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:30px}.coming-icon{width:82px;height:82px;display:grid;place-items:center;border:1px solid #6456ff;border-radius:25px;background:#1b1659;color:#a99bff;box-shadow:0 0 30px rgba(88,67,255,.35)}.coming-icon svg{width:34px;height:34px}.coming-page h1{margin:20px 0 7px}.coming-page p{max-width:450px;color:#9aa6cc;font-size:13px;line-height:1.7}.coming-page button{display:flex;align-items:center;gap:8px;margin-top:12px}.toast-message{position:fixed;right:22px;bottom:22px;z-index:10;max-width:min(480px,calc(100vw - 30px));display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid #6860ff;border-radius:12px;background:#101640;box-shadow:0 8px 35px #0008;color:#f3f4ff;font-size:12px}.toast-message button{border:0;background:transparent;color:#fff}
+@media(max-width:1150px){.dashboard-grid{grid-template-columns:minmax(300px,1fr) 300px;gap:12px;padding:12px}.right-rail{gap:10px}.glass-card{padding:13px}.quick-actions{gap:6px}.quick-actions button{min-height:95px;font-size:10px}.hero-brand{right:3%}.hero-brand b{font-size:56px}.hero-brand strong{font-size:22px}}
+@media(max-width:850px){.sidebar{width:76px;flex-basis:76px;padding:14px 8px}.brand-lockup{justify-content:center;padding:0 0 14px}.brand-mark{width:48px;height:48px}.brand-lockup>div:last-child,.nav-item span,.sidebar-love span,.profile-card>div:not(.profile-avatar),.profile-arrow{display:none}.nav-item{justify-content:center;padding:0}.sidebar-love{justify-content:center;padding:12px 0}.profile-card{justify-content:center;padding:6px}.dashboard-grid{grid-template-columns:1fr;overflow:auto}.hero-stage{min-height:550px}.right-rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.status-card{grid-column:1/-1}.topbar{height:60px;flex-basis:60px}.chat-page,.settings-page{padding:18px}.provider-cards{grid-template-columns:1fr}}
+@media(max-width:600px){.zara-shell{min-height:100vh;height:auto;min-height:100dvh}.sidebar{width:60px;flex-basis:60px}.nav-list{gap:5px;margin-top:18px}.nav-item{height:43px}.brand-mark{width:42px;height:42px}.topbar{padding:0 12px;justify-content:space-between}.mobile-brand{display:block;font-size:15px;font-weight:800}.mobile-brand span{display:block;color:#8e9ac5;font-size:9px;font-weight:400}.top-actions{gap:2px}.top-actions button{width:29px}.window-dots{display:none}.online-pill{padding:7px 10px;font-size:11px}.dashboard-grid{height:auto;min-height:calc(100dvh - 60px);padding:10px}.hero-stage{min-height:490px}.hero-character{height:85%;max-width:100%}.welcome-bubble{top:5%;left:4%;padding:10px;font-size:11px}.hero-brand{top:23%;right:3%}.hero-brand b{font-size:42px}.hero-brand strong{font-size:16px}.hero-brand small{font-size:8px}.talk-dock{height:62px;bottom:13px;padding:5px 10px;gap:5px}.talk-dock span{font-size:10px}.talk-dock button{width:35px;height:35px}.talk-dock .mic-main{width:66px;height:66px;flex-basis:66px;border-width:3px}.talk-dock .mic-main svg{width:28px}.right-rail{display:flex}.quick-actions button{min-height:85px}.chat-page,.settings-page{min-height:calc(100dvh - 60px);padding:14px 10px}.chat-toolbar{flex-wrap:wrap}.chat-toolbar h1{font-size:18px}.provider-select{margin-left:0}.new-chat-button{margin-left:auto}.chat-messages{padding:14px 2px}.message-content p{font-size:12px}.provider-meta{flex-direction:column}.toast-message{right:10px;bottom:10px}}
+
+========== FILE: src/App.tsx ==========
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Activity, ArrowRight, AudioLines, Bot, ChevronDown,
+  Code2, Folder, Globe, Grid2X2, Heart, Home, Info, Keyboard, Mic,
+  MessageCircle, MessageSquare, Monitor, Play, Search, Send, Settings,
+  ShieldCheck, Sparkles, Volume2, X, Zap,
+} from 'lucide-react';
+import heroImage from './assets/zara-hero.png';
+import './App.css';
+
+type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
+type ProviderId = 'omniroute' | 'freellmapi';
+type Provider = { id: ProviderId; name: string; status: string; enabled: number };
+type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; created_at?: string };
+
+const API = '/api/v1';
+const navItems: Array<{ id: Tab; label: string; icon: typeof Home }> = [
+  { id: 'home', label: 'Home', icon: Home },
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'voice', label: 'Voice', icon: Mic },
+  { id: 'memory', label: 'Memory', icon: Grid2X2 },
+  { id: 'agents', label: 'AI Agents', icon: Bot },
+  { id: 'tools', label: 'Tools', icon: Zap },
+  { id: 'files', label: 'Files', icon: Folder },
+  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'about', label: 'About', icon: Info },
+];
+
+async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API}${path}`, {
+    ...init,
+    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || `HTTP_${response.status}`);
+  return body as T;
+}
+
+export default function App() {
+  const [tab, setTab] = useState<Tab>('home');
+  const [online, setOnline] = useState(false);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderId>('omniroute');
+  const [threadId, setThreadId] = useState('');
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState('');
+
+  const refreshProviders = useCallback(async () => {
+    try {
+      const result = await api<{ providers: Provider[] }>('/providers');
+      setProviders(result.providers);
+    } catch {
+      setProviders([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api('/health').then(() => { if (active) setOnline(true); }).catch(() => { if (active) setOnline(false); });
+    refreshProviders();
+    api<{ threads: Array<{ id: string }> }>('/threads')
+      .then(async ({ threads }) => {
+        if (!active) return;
+        if (threads[0]?.id) {
+          setThreadId(threads[0].id);
+          const result = await api<{ messages: Message[] }>(`/threads/${threads[0].id}/messages`);
+          if (active) setMessages(result.messages);
+        } else {
+          const result = await api<{ thread: { id: string } }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
+          if (active) setThreadId(result.thread.id);
+        }
+      })
+      .catch(() => setOnline(false));
+    return () => { active = false; };
+  }, [refreshProviders]);
+
+  const startNewChat = useCallback(async () => {
+    try {
+      const result = await api<{ thread: { id: string } }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
+      setThreadId(result.thread.id);
+      setMessages([]);
+      setTab('chat');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not create chat');
+    }
+  }, []);
+
+  const sendMessage = useCallback(async () => {
+    const content = input.trim();
+    if (!content || busy || !threadId) return;
+    const clientMessageId = crypto.randomUUID();
+    const userMessage: Message = { id: clientMessageId, role: 'user', content };
+    const assistantId = `pending-${clientMessageId}`;
+    setMessages((current) => [...current, userMessage, { id: assistantId, role: 'assistant', content: '' }]);
+    setInput('');
+    setBusy(true);
+    setTab('chat');
+
+    try {
+      const response = await fetch(`${API}/chat/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threadId, content, clientMessageId, providerId: selectedProvider }),
+      });
+      if (!response.ok || !response.body) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP_${response.status}`);
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finished = false;
+      while (!finished) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
+        let boundary = buffer.indexOf('\n\n');
+        while (boundary >= 0) {
+          const eventText = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          const eventName = eventText.split('\n').find((line) => line.startsWith('event:'))?.slice(6).trim();
+          const dataText = eventText.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
+          if (dataText) {
+            const data = JSON.parse(dataText) as { token?: string; error?: string; assistantMessage?: Message };
+            if (eventName === 'token' && data.token) {
+              setMessages((current) => current.map((message) => message.id === assistantId ? { ...message, content: message.content + data.token } : message));
+            }
+            if (eventName === 'error') throw new Error(data.error || 'CHAT_REQUEST_FAILED');
+            if (eventName === 'done') {
+              if (data.assistantMessage) {
+                setMessages((current) => current.map((message) => message.id === assistantId ? data.assistantMessage! : message));
+              }
+              finished = true;
+            }
+          }
+          boundary = buffer.indexOf('\n\n');
+        }
+      }
+      if (!finished) throw new Error('STREAM_CLOSED_BEFORE_COMPLETION');
+      refreshProviders();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'CHAT_REQUEST_FAILED';
+      setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content ? `${item.content}\n\n[Connection interrupted: ${message}]` : `I couldn't complete that request: ${message}` } : item));
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, input, refreshProviders, selectedProvider, threadId]);
+
+  const verifyProvider = async (id: ProviderId) => {
+    setToast(`Checking ${id} connection...`);
+    try {
+      const result = await api<{ modelCount: number }>(`/providers/${id}/verify`, { method: 'POST' });
+      await refreshProviders();
+      setToast(`${id} connected. ${result.modelCount} models found. Enable it to use it.`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Provider verification failed');
+    }
+  };
+
+  const toggleProvider = async (provider: Provider) => {
+    try {
+      await api(`/providers/${provider.id}/enabled`, { method: 'PATCH', body: JSON.stringify({ enabled: provider.enabled !== 1 }) });
+      await refreshProviders();
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Provider update failed');
+    }
+  };
+
+  const pageTitle = useMemo(() => navItems.find((item) => item.id === tab)?.label ?? 'Home', [tab]);
+  const enabledProvider = providers.find((provider) => provider.id === selectedProvider && provider.enabled === 1 && provider.status === 'ready');
+
+  return (
+    <div className="zara-shell">
+      <aside className="sidebar">
+        <div className="brand-lockup">
+          <div className="brand-mark"><Zap size={28} fill="currentColor" /></div>
+          <div><div className="brand-name">ZARA</div><div className="brand-subtitle">Your Personal AI Assistant</div></div>
+        </div>
+        <nav className="nav-list">
+          {navItems.map(({ id, label, icon: Icon }) => (
+            <button className={`nav-item ${tab === id ? 'active' : ''}`} key={id} onClick={() => setTab(id)}>
+              <Icon size={21} strokeWidth={2.1} /><span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="sidebar-love"><Heart size={20} fill="currentColor" /> <span>Always with you</span></div>
+        <div className="profile-card"><div className="profile-avatar"><img src={heroImage} alt="ZARA assistant avatar" /></div><div><strong>ZARA <ShieldCheck size={15} /></strong><small><i /> Ready to Assist</small></div><ArrowRight className="profile-arrow" size={20} /></div>
+      </aside>
+
+      <main className="main-area">
+        <header className="topbar">
+          <div className="mobile-brand">ZARA <span>{pageTitle}</span></div>
+          <div className={`online-pill ${online ? 'is-online' : 'is-offline'}`}><i />{online ? 'Online' : 'Offline'}<ChevronDown size={15} /></div>
+          <div className="top-actions"><button aria-label="Voice"><Mic /></button><button aria-label="Sound"><Volume2 /></button><button aria-label="Language"><Globe /></button><span className="window-dots">—　□　×</span></div>
+        </header>
+
+        {tab === 'home' && (
+          <section className="dashboard-grid">
+            <div className="hero-stage">
+              <div className="hero-glow" />
+              <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?</div>
+              <img className="hero-character" src={heroImage} alt="ZARA futuristic assistant" />
+              <div className="hero-brand"><b>Z</b><strong>ZARA</strong><small>Dream · Assist · Achieve</small></div>
+              <div className="talk-dock"><div className="wave-icon"><AudioLines size={27} /></div><span>Tap to Talk</span><button className="mic-main" onClick={() => setTab('voice')} aria-label="Open voice assistant"><Mic size={39} /></button><button onClick={() => setTab('chat')} aria-label="Open chat"><Keyboard /></button><button onClick={() => setTab('voice')} aria-label="Play voice"><Play /></button><button onClick={() => setTab('settings')} aria-label="Open settings"><Settings /></button></div>
+            </div>
+            <aside className="right-rail">
+              <section className="glass-card quick-card"><div className="card-heading"><h2><Zap size={20} fill="#ffd34e" /> Quick Actions</h2><button onClick={() => setTab('tools')}>View All <ArrowRight size={16} /></button></div><div className="quick-actions"><button onClick={() => setTab('chat')}><MessageCircle /><span>Chat<br />Now</span></button><button onClick={() => setTab('voice')}><Mic /><span>Voice<br />Assistant</span></button><button onClick={() => setToast('Media playback will be connected in the media tools phase.')}><Play /><span>Play<br />Music</span></button><button onClick={() => setTab('tools')}><Grid2X2 /><span>Open<br />Apps</span></button></div></section>
+              <section className="glass-card skills-card"><div className="card-heading"><h2><Sparkles size={20} fill="#ffd34e" /> AI Skills</h2><button onClick={() => setTab('agents')}>View All <ArrowRight size={16} /></button></div><ul className="skill-list"><li><Search />Research &amp; Information</li><li><Code2 />Code &amp; Development</li><li><Monitor />Control Your PC</li><li><Zap />Create Content</li><li><Grid2X2 />And Much More...</li></ul></section>
+              <section className="glass-card status-card"><div className="card-heading"><h2><Activity size={20} /> System Status</h2></div><div className="status-row"><span>AI Backend</span><b className={online ? 'green-text' : 'red-text'}>{online ? 'Connected' : 'Offline'}</b></div><div className="status-row"><span>Primary Brain</span><b>{providers.find((p) => p.id === 'omniroute')?.status ?? 'Unknown'}</b></div><div className="status-row"><span>Backup Brain</span><b>{providers.find((p) => p.id === 'freellmapi')?.status ?? 'Unknown'}</b></div></section>
+            </aside>
+          </section>
+        )}
+
+        {tab === 'chat' && (
+          <section className="chat-page">
+            <div className="chat-toolbar"><div><h1>Chat with ZARA</h1><p>One assistant · two AI providers · automatic backup</p></div><div className="provider-select"><label htmlFor="provider-choice">Brain</label><select id="provider-choice" value={selectedProvider} onChange={(event) => setSelectedProvider(event.target.value as ProviderId)}><option value="omniroute">OmniRoute · Primary</option><option value="freellmapi">FreeLLMAPI · Backup</option></select></div><button className="new-chat-button" onClick={startNewChat}>+ New Chat</button></div>
+            <div className="chat-messages">{messages.length === 0 && <div className="chat-empty"><div className="empty-orb"><Zap size={35} /></div><h2>How can I help you?</h2><p>Ask ZARA anything. Replies use your configured AI provider.</p><div className="suggestion-row"><button onClick={() => setInput('Explain something in simple Bengali.')}>Explain in Bengali</button><button onClick={() => setInput('Help me write a TypeScript function.')}>Write code</button></div></div>}{messages.map((message) => <article className={`message-row ${message.role}`} key={message.id}><div className="message-avatar">{message.role === 'user' ? 'You' : 'Z'}</div><div className="message-content"><strong>{message.role === 'user' ? 'You' : 'ZARA'}</strong><p>{message.content || (busy ? 'ZARA is thinking…' : '')}</p></div></article>)}</div>
+            <div className="composer-wrap"><div className="composer"><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder="Message ZARA…" rows={1} /><button className="send-button" onClick={() => void sendMessage()} disabled={!input.trim() || busy || !threadId}><Send size={19} /></button></div><small>{enabledProvider ? `Using ${enabledProvider.name}` : 'Choose a verified and enabled provider in Settings. API keys stay on the backend.'}</small></div>
+          </section>
+        )}
+
+        {tab === 'settings' && (
+          <section className="settings-page"><div className="section-title"><h1>AI Brain Settings</h1><p>Configure the two approved providers. API keys are read only from backend environment variables.</p></div><div className="provider-cards">{(['omniroute', 'freellmapi'] as ProviderId[]).map((id) => { const provider = providers.find((item) => item.id === id); return <article className="provider-card" key={id}><div className="provider-card-top"><div className={`provider-symbol ${id}`}>{id === 'omniroute' ? 'O' : 'F'}</div><div><h2>{id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'}</h2><p>{id === 'omniroute' ? 'Primary AI Brain' : 'Automatic Backup Brain'}</p></div><span className={`provider-status ${provider?.status === 'ready' ? 'ready' : ''}`}>{provider?.status ?? 'not checked'}</span></div><div className="provider-meta"><span>API Key: <b>Backend environment</b></span><span>Enabled: <b>{provider?.enabled ? 'Yes' : 'No'}</b></span></div><div className="provider-buttons"><button onClick={() => void verifyProvider(id)}>Verify Connection</button><button className="secondary-button" disabled={!provider || provider.status !== 'ready'} onClick={() => provider && void toggleProvider(provider)}>{provider?.enabled ? 'Disable' : 'Enable'}</button></div></article>; })}</div><div className="notice-card"><ShieldCheck /><div><strong>Secret protection</strong><p>Never paste API keys into ChatGPT, browser console, or SQLite. Configure <code>OMNIROUTE_API_KEY</code> and <code>FREELLMAPI_API_KEY</code> in your private server environment.</p></div></div></section>
+        )}
+
+        {tab !== 'home' && tab !== 'chat' && tab !== 'settings' && (
+          <section className="coming-page"><div className="coming-icon">{tab === 'voice' ? <Mic /> : tab === 'memory' ? <Grid2X2 /> : tab === 'agents' ? <Bot /> : tab === 'tools' ? <Zap /> : tab === 'files' ? <Folder /> : <Info />}</div><h1>{pageTitle}</h1><p>{tab === 'voice' ? 'Voice controls will be connected after the chat brain is verified.' : 'This module is planned for a later integration phase. Its controls will be enabled only when the required service and permissions are ready.'}</p><button onClick={() => setTab('chat')}>Go to Chat <ArrowRight size={16} /></button></section>
+        )}
+      </main>
+      {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X size={16} /></button></div>}
+    </div>
+  );
+}
+
+========== FILE: src/components/Avatar.tsx ==========
+
+import { motion } from 'framer-motion';
+import type { CSSProperties } from 'react';
+import type { ZaraStatus } from '../types';
+
+interface Props {
+  status: ZaraStatus;
+}
+
+const statusColors: Record<ZaraStatus, string> = {
+  idle: '#8b5cf6',
+  listening: '#22d3ee',
+  thinking: '#a78bfa',
+  speaking: '#67e8f9',
+};
+
+export default function Avatar({ status }: Props) {
+  const color = statusColors[status];
+  const active = status !== 'idle';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.6 }}
+      style={styles.wrapper}
+    >
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{
+          duration: 24,
+          repeat: Infinity,
+          ease: 'linear',
+        }}
+        style={{
+          ...styles.outerRing,
+          borderColor: `${color}55`,
+        }}
+      />
+
+      {active && (
+        <motion.div
+          animate={{ scale: [1, 1.35], opacity: [0.5, 0] }}
+          transition={{
+            duration: 1.8,
+            repeat: Infinity,
+            ease: 'easeOut',
+          }}
+          style={{ ...styles.pulseRing, borderColor: color }}
+        />
+      )}
+
+      <div
+        style={{
+          ...styles.core,
+          boxShadow: `0 0 60px ${color}55`,
+        }}
+      >
+        <div style={styles.glow} />
+
+        <svg viewBox="0 0 120 150" width="76%" height="82%">
+          <defs>
+            <linearGradient id="zaraFace" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stopColor={color} />
+              <stop offset="100%" stopColor="#22d3ee" />
+            </linearGradient>
+          </defs>
+
+          {/* Hair / helmet */}
+          <path
+            d="M27 58 Q20 10 60 8 Q100 10 93 58 L88 83 L32 83 Z"
+            fill="url(#zaraFace)"
+          />
+
+          {/* Face */}
+          <ellipse cx="60" cy="61" rx="27" ry="34" fill="#11172e" />
+
+          {/* Futuristic eye lights */}
+          <path
+            d="M43 56 L53 56 M67 56 L77 56"
+            stroke={color}
+            strokeWidth="4"
+            strokeLinecap="round"
+          />
+
+          {/* Face details */}
+          <path
+            d="M52 75 Q60 80 68 75"
+            stroke={color}
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+          />
+
+          {/* Neck */}
+          <path d="M48 91 L72 91 L77 105 L43 105 Z" fill="#28365b" />
+
+          {/* Armor / shoulders */}
+          <path
+            d="M18 150 Q18 106 43 102 L60 114 L77 102 Q102 106 102 150 Z"
+            fill="url(#zaraFace)"
+          />
+
+          <path
+            d="M43 111 L60 126 L77 111"
+            stroke="#dbeafe"
+            strokeWidth="2"
+            fill="none"
+          />
+        </svg>
+      </div>
+
+      <motion.div
+        key={status}
+        initial={{ opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        style={styles.status}
+      >
+        <span
+          style={{
+            ...styles.dot,
+            background: color,
+            boxShadow: `0 0 10px ${color}`,
+          }}
+        />
+        {status === 'idle'
+          ? 'Standby'
+          : status.charAt(0).toUpperCase() + status.slice(1)}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+const styles: Record<string, CSSProperties> = {
+  wrapper: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '20px',
+    width: '280px',
+    flexShrink: 0,
+  },
+  outerRing: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: '220px',
+    height: '220px',
+    marginTop: '-110px',
+    marginLeft: '-110px',
+    borderRadius: '50%',
+    border: '1px dashed',
+  },
+  pulseRing: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    width: '180px',
+    height: '180px',
+    marginTop: '-90px',
+    marginLeft: '-90px',
+    borderRadius: '50%',
+    border: '2px solid',
+  },
+  core: {
+    position: 'relative',
+    width: '180px',
+    height: '180px',
+    borderRadius: '50%',
+    overflow: 'hidden',
+    background: '#0a0d1f',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glow: {
+    position: 'absolute',
+    inset: 0,
+    background:
+      'radial-gradient(circle at 50% 30%,rgba(139,92,246,0.3),transparent 70%)',
+  },
+  status: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    fontSize: '12px',
+    color: '#7a85a8',
+    letterSpacing: '1.5px',
+    textTransform: 'uppercase',
+  },
+  dot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+  },
+};
+
+========== FILE: src/components/ChatInterface.tsx ==========
+
+import { useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { Send, Mic, Paperclip } from 'lucide-react';
+import type { CSSProperties, KeyboardEvent } from 'react';
+import type { Message, ZaraStatus } from '../types';
+import MessageBubble from './MessageBubble';
+
+interface Props {
+  messages: Message[];
+  setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
+  status: ZaraStatus;
+  setStatus: (status: ZaraStatus) => void;
+}
+
+export default function ChatInterface({
+  messages,
+  setMessages,
+  status,
+  setStatus,
+}: Props) {
+  const [input, setInput] = useState('');
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  const sendMessage = () => {
+    const text = input.trim();
+    if (!text || status === 'thinking') return;
+
+    const userMessage: Message = {
+      id: crypto.randomUUID(),
+      role: 'user',
+      content: text,
+      timestamp: new Date(),
+    };
+
+    setMessages((previous) => [...previous, userMessage]);
+    setInput('');
+
+    // AI backend এখনো সংযুক্ত নয়।
+    // এটি শুধু UI পরীক্ষা করার জন্য একটি demo reply।
+    setStatus('thinking');
+
+    window.setTimeout(() => {
+      const demoMessage: Message = {
+        id: crypto.randomUUID(),
+        role: 'zara',
+        content: 'আমি ZARA। আমার AI brain এখনো সংযুক্ত করা হয়নি। Backend যুক্ত হলে আমি তোমার প্রশ্নের উত্তর দিতে পারব।',
+        timestamp: new Date(),
+      };
+
+      setMessages((previous) => [...previous, demoMessage]);
+      setStatus('idle');
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 1200);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendMessage();
+    }
+  };
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.messages}>
+        {messages.length === 0 && (
+          <div style={styles.welcome}>
+            <h2>How can I help you?</h2>
+            <p>I'm ZARA. Your personal AI assistant.</p>
+          </div>
+        )}
+
+        {messages.map((message) => (
+          <MessageBubble key={message.id} message={message} />
+        ))}
+
+        {status === 'thinking' && (
+          <div style={styles.thinking}>ZARA is thinking...</div>
+        )}
+
+        <div ref={bottomRef} />
+      </div>
+
+      <div style={styles.inputArea}>
+        <div style={styles.inputBox}>
+          <button type="button" style={styles.iconButton} aria-label="Attachment (not available yet)">
+            <Paperclip size={19} />
+          </button>
+
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Message ZARA..."
+            rows={1}
+            style={styles.textarea}
+          />
+
+          <button
+            type="button"
+            style={styles.iconButton}
+            aria-label="Voice input (not available yet)"
+            disabled
+          >
+            <Mic size={19} />
+          </button>
+
+          <motion.button
+            whileTap={{ scale: 0.92 }}
+            type="button"
+            onClick={sendMessage}
+            disabled={!input.trim() || status === 'thinking'}
+            style={{
+              ...styles.sendButton,
+              opacity: !input.trim() || status === 'thinking' ? 0.45 : 1,
+            }}
+            aria-label="Send message"
+          >
+            <Send size={18} />
+          </motion.button>
+        </div>
+
+        <p style={styles.note}>
+          AI connection is not configured yet. Voice and attachments are coming later.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const styles: Record<string, CSSProperties> = {
+  container: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100%',
+    minHeight: 0,
+    width: '100%',
+  },
+  messages: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: 'auto',
+    padding: '24px 20px',
+  },
+  welcome: {
+    textAlign: 'center',
+    margin: 'auto',
+    padding: '45px 10px',
+    color: '#e2e8f0',
+  },
+  inputArea: {
+    padding: '12px 20px 18px',
+    borderTop: '1px solid rgba(148, 163, 184, 0.12)',
+  },
+  inputBox: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '10px 12px',
+    borderRadius: 18,
+    border: '1px solid rgba(139, 92, 246, 0.3)',
+    background: '#10152b',
+  },
+  textarea: {
+    flex: 1,
+    minWidth: 0,
+    resize: 'none',
+    outline: 'none',
+    border: 'none',
+    background: 'transparent',
+    color: '#f1f5f9',
+    font: 'inherit',
+    fontSize: 14,
+    padding: '8px 2px',
+  },
+  iconButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: 'none',
+    background: 'transparent',
+    color: '#9ca3c5',
+    padding: 7,
+    cursor: 'pointer',
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    border: 'none',
+    borderRadius: 12,
+    background: 'linear-gradient(135deg, #8b5cf6, #06b6d4)',
+    color: 'white',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+  },
+  thinking: {
+    color: '#a78bfa',
+    fontSize: 13,
+    padding: 12,
+  },
+  note: {
+    textAlign: 'center',
+    color: '#64748b',
+    fontSize: 10,
+    margin: '10px 0 0',
+  },
+};
+
+========== FILE: src/components/MessageBubble.tsx ==========
+
+import { motion } from 'framer-motion';
+import { Bot, User } from 'lucide-react';
+import type { CSSProperties } from 'react';
+import type { Message } from '../types';
+
+interface Props {
+  message: Message;
+}
+
+export default function MessageBubble({ message }: Props) {
+  const isZara = message.role === 'zara';
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{
+        ...styles.row,
+        justifyContent: isZara ? 'flex-start' : 'flex-end',
+      }}
+    >
+      {isZara && (
+        <div style={styles.avatar}>
+          <Bot size={18} color="#c4b5fd" />
+        </div>
+      )}
+
+      <div
+        style={{
+          ...styles.bubble,
+          background: isZara
+            ? 'rgba(139, 92, 246, 0.12)'
+            : 'rgba(34, 211, 238, 0.10)',
+          borderColor: isZara
+            ? 'rgba(139, 92, 246, 0.25)'
+            : 'rgba(34, 211, 238, 0.22)',
+          borderRadius: isZara
+            ? '5px 18px 18px 18px'
+            : '18px 5px 18px 18px',
+        }}
+      >
+        <div style={styles.content}>{message.content}</div>
+        <div style={styles.time}>
+          {message.timestamp.toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </div>
+      </div>
+
+      {!isZara && (
+        <div style={{ ...styles.avatar, background: '#123044' }}>
+          <User size={18} color="#67e8f9" />
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+const styles: Record<string, CSSProperties> = {
+  row: {
+    display: 'flex',
+    alignItems: 'flex-end',
+    gap: 10,
+    width: '100%',
+    marginBottom: 18,
+  },
+  avatar: {
+    width: 34,
+    height: 34,
+    flexShrink: 0,
+    borderRadius: 12,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    background: '#292044',
+  },
+  bubble: {
+    maxWidth: 'min(75%, 560px)',
+    padding: '13px 16px',
+    border: '1px solid',
+    color: '#e2e8f0',
+    fontSize: 14,
+    lineHeight: 1.65,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+  },
+  content: {
+    marginBottom: 5,
+  },
+  time: {
+    textAlign: 'right',
+    color: '#78839f',
+    fontSize: 10,
+  },
+};
+
+========== FILE: src/components/Sidebar.tsx ==========
+import { motion } from 'framer-motion';
+import {
+  MessageSquare,
+  Brain,
+  Sparkles,
+  Clock3,
+  Settings,
+  Zap,
+} from 'lucide-react';
+import type { CSSProperties } from 'react';
+import type { SidebarTab } from '../types';
+
+interface Props {
+  activeTab: SidebarTab;
+  onTabChange: (tab: SidebarTab) => void;
+}
+
+const items = [
+  { id: 'chat', label: 'Chat', icon: MessageSquare },
+  { id: 'memory', label: 'Memory', icon: Brain },
+  { id: 'skills', label: 'AI Skills', icon: Sparkles },
+  { id: 'history', label: 'History', icon: Clock3 },
+  { id: 'settings', label: 'Settings', icon: Settings },
+] as const;
+
+export default function Sidebar({ activeTab, onTabChange }: Props) {
+  return (
+    <aside style={styles.sidebar}>
+      <div style={styles.brand}>
+        <div style={styles.logo}>
+          <Zap size={23} />
+        </div>
+        <div>
+          <h2 style={styles.brandName}>ZARA</h2>
+          <span style={styles.brandCaption}>AI ASSISTANT</span>
+        </div>
+      </div>
+
+      <div style={styles.sectionLabel}>WORKSPACE</div>
+
+      <nav style={styles.nav}>
+        {items.map(({ id, label, icon: Icon }) => {
+          const active = activeTab === id;
+
+          return (
+            <motion.button
+              key={id}
+              type="button"
+              whileHover={{ x: 3 }}
+              whileTap={{ scale: 0.97 }}
+              onClick={() => onTabChange(id)}
+              style={{
+                ...styles.navItem,
+                ...(active ? styles.activeItem : {}),
+              }}
+            >
+              <Icon size={19} />
+              <span>{label}</span>
+              {active && <span style={styles.activeDot} />}
+            </motion.button>
+          );
+        })}
+      </nav>
+
+      <div style={styles.footer}>
+        <span style={styles.footerDot} />
+        <span>LOCAL INTERFACE</span>
+      </div>
+    </aside>
+  );
+}
+
+const styles: Record<string, CSSProperties> = {
+  sidebar: {
+    width: 245,
+    minWidth: 245,
+    height: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+    padding: '25px 16px 18px',
+    background: 'rgba(9,12,27,0.96)',
+    borderRight: '1px solid rgba(148,163,184,0.12)',
+  },
+  brand: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    padding: '0 9px',
+    marginBottom: 48,
+  },
+  logo: {
+    width: 42,
+    height: 42,
+    display: 'grid',
+    placeItems: 'center',
+    borderRadius: 13,
+    color: '#c4b5fd',
+    background: 'rgba(139,92,246,0.16)',
+    border: '1px solid rgba(139,92,246,0.3)',
+  },
+  brandName: {
+    margin: 0,
+    color: '#f1f5f9',
+    fontSize: 21,
+    letterSpacing: 3,
+  },
+  brandCaption: {
+    color: '#818ba8',
+    fontSize: 9,
+    letterSpacing: 2,
+  },
+  sectionLabel: {
+    padding: '0 12px',
+    marginBottom: 13,
+    color: '#64748b',
+    fontSize: 9,
+    letterSpacing: 1.8,
+  },
+  nav: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 7,
+  },
+  navItem: {
+    width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 13,
+    padding: '12px 13px',
+    border: '1px solid transparent',
+    borderRadius: 10,
+    background: 'transparent',
+    color: '#94a3b8',
+    fontSize: 13,
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+  activeItem: {
+    color: '#ddd6fe',
+    background: 'rgba(139,92,246,0.13)',
+    borderColor: 'rgba(139,92,246,0.23)',
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    marginLeft: 'auto',
+    borderRadius: '50%',
+    background: '#a78bfa',
+    boxShadow: '0 0 9px #a78bfa',
+  },
+  footer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 9,
+    marginTop: 'auto',
+    padding: '14px 10px 3px',
+    borderTop: '1px solid rgba(148,163,184,0.1)',
+    color: '#64748b',
+    fontSize: 9,
+    letterSpacing: 1,
+  },
+  footerDot: {
+    width: 7,
+    height: 7,
+    borderRadius: '50%',
+    background: '#22d3ee',
+  },
+};
+
+========== FILE: src/components/StatusIndicator.tsx ==========
+
+import { motion } from 'framer-motion';
+import type { ZaraStatus } from '../types';
+
+interface Props {
+  status: ZaraStatus;
+}
+
+const statusInfo: Record<ZaraStatus, { label: string; color: string }> = {
+  idle: { label: 'Ready for your command', color: '#8b5cf6' },
+  listening: { label: 'Listening to you...', color: '#22d3ee' },
+  thinking: { label: 'Processing your request...', color: '#a78bfa' },
+  speaking: { label: 'ZARA is speaking...', color: '#67e8f9' },
+};
+
+export default function StatusIndicator({ status }: Props) {
+  const info = statusInfo[status];
+
+  return (
+    <motion.div
+      key={status}
+      initial={{ opacity: 0, y: 5 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        color: '#a5b4d4',
+        fontSize: 13,
+        padding: '10px 16px',
+      }}
+    >
+      <motion.span
+        animate={
+          status === 'idle'
+            ? { opacity: 1 }
+            : { opacity: [0.4, 1, 0.4] }
+        }
+        transition={{ duration: 1.2, repeat: Infinity }}
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          background: info.color,
+          boxShadow: `0 0 12px ${info.color}`,
+        }}
+      />
+      {info.label}
+    </motion.div>
+  );
+}
+
+========== FILE: src/index.css ==========
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#f5f7ff;background:#050817;font-synthesis:none;text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}*{box-sizing:border-box}html,body,#root{width:100%;min-width:320px;height:100%;margin:0}body{overflow:hidden;background:#050817}button,input,textarea,select{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid #69d8ff;outline-offset:3px}::selection{background:#5336c8;color:#fff}::-webkit-scrollbar{width:6px}::-webkit-scrollbar-thumb{background:#393078;border-radius:8px}@media(max-width:760px){body{overflow:auto}html,body,#root{height:auto;min-height:100%}}
+
+========== FILE: src/main.tsx ==========
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import './index.css'
+import App from './App.tsx'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+
+========== FILE: src/types/index.ts ==========
+export type ZaraStatus =
+  | 'idle'
+  | 'listening'
+  | 'thinking'
+  | 'speaking';
+
+export type SidebarTab =
+  | 'chat'
+  | 'memory'
+  | 'skills'
+  | 'history'
+  | 'settings';
+
+export interface Message {
+  id: string;
+  role: 'user' | 'zara';
+  content: string;
+  timestamp: Date;
+}

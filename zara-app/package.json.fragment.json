@@ -1,0 +1,5 @@
+{
+  "scripts": {
+    "test": "tsx tests/providerRegistry.test.ts && tsx tests/secretStore.test.ts && tsx tests/chatService.test.ts"
+  }
+}

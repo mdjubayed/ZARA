@@ -29,6 +29,13 @@ function createAdapter(providerId: string): ProviderAdapter {
     async generate() {
       return { content: 'Test response' };
     },
+    async stream(_request, onToken) {
+      onToken('Test');
+      return { content: 'Test response' };
+    },
+    async verify() {
+      return ['test-model'];
+    },
   };
 }
 

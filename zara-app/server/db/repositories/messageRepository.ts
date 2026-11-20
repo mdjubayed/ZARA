@@ -38,10 +38,17 @@ export interface SearchMessagesPaginatedResult {
 export function createMessage(
   threadId: string,
   role: MessageRole,
-  content: string
+  content: string,
+  id = randomUUID(),
 ): Message {
   const db = getDatabase();
-  const id = randomUUID();
+  const existing = getMessageById(id);
+  if (existing) {
+    if (existing.thread_id === threadId && existing.role === role && existing.content === content) {
+      return existing;
+    }
+    throw new Error('MESSAGE_ID_CONFLICT');
+  }
 
   const threadExists = db.prepare(
     'SELECT id FROM threads WHERE id = ?'

@@ -1,0 +1,3 @@
+Add this entry inside the existing package.json "scripts" object; do not replace the rest of package.json:
+
+"test": "tsx tests/providerRegistry.test.ts && tsx tests/secretStore.test.ts && tsx tests/chatService.test.ts"

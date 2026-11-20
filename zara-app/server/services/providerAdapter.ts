@@ -1,4 +1,3 @@
-
 export type ChatMessageRole = 'system' | 'user' | 'assistant';
 
 export interface ChatMessage {
@@ -28,8 +27,22 @@ export interface ProviderGenerationResponse {
 
 export interface ProviderAdapter {
   readonly providerId: string;
-
-  generate(
-    request: ProviderGenerationRequest
+  generate(request: ProviderGenerationRequest): Promise<ProviderGenerationResponse>;
+  stream(
+    request: ProviderGenerationRequest,
+    onToken: (token: string) => void,
   ): Promise<ProviderGenerationResponse>;
+  verify(): Promise<string[]>;
+}
+
+export class ProviderRequestError extends Error {
+  constructor(
+    public readonly providerId: string,
+    public readonly code: string,
+    public readonly status?: number,
+    public readonly recoverable = false,
+  ) {
+    super(code);
+    this.name = 'ProviderRequestError';
+  }
 }
