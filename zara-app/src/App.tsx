@@ -180,6 +180,51 @@ export default function App() {
     }
   }, []);
 
+  const stopSpeaking = useCallback(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+    setIsSpeaking(false);
+  }, []);
+
+  const speakText = useCallback((text: string) => {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      setSpeechError('Spoken replies are not supported in this browser.');
+      setIsSpeaking(false);
+      return;
+    }
+    const content = text.trim();
+    if (!content) return;
+    window.speechSynthesis.cancel();
+    setSpeechError('');
+    const utterance = new SpeechSynthesisUtterance(content);
+    utterance.lang = voiceLanguage;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    const voices = window.speechSynthesis.getVoices();
+    const languagePrefix = voiceLanguage.split('-')[0].toLowerCase();
+    const matchingVoice = voices.find((voice) => voice.lang.toLowerCase() === voiceLanguage.toLowerCase())
+      ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
+    if (matchingVoice) utterance.voice = matchingVoice;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => {
+      if (utteranceRef.current === utterance) {
+        utteranceRef.current = null;
+        setIsSpeaking(false);
+      }
+    };
+    utterance.onerror = (event) => {
+      if (utteranceRef.current === utterance) {
+        utteranceRef.current = null;
+        setIsSpeaking(false);
+        if (event.error !== 'canceled' && event.error !== 'interrupted') {
+          setSpeechError('Browser could not speak this reply. Check available speech voices and audio settings.');
+        }
+      }
+    };
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, [voiceLanguage]);
+
   const sendMessage = useCallback(async (messageText?: string, speakResponse = false) => {
     const content = (messageText ?? input).trim();
     if (!content || busy || !threadId) return;
@@ -456,51 +501,6 @@ export default function App() {
       setToast(error instanceof Error ? error.message : 'Could not delete conversation');
     }
   };
-
-  const stopSpeaking = useCallback(() => {
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-    utteranceRef.current = null;
-    setIsSpeaking(false);
-  }, []);
-
-  const speakText = useCallback((text: string) => {
-    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
-      setSpeechError('Spoken replies are not supported in this browser.');
-      setIsSpeaking(false);
-      return;
-    }
-    const content = text.trim();
-    if (!content) return;
-    window.speechSynthesis.cancel();
-    setSpeechError('');
-    const utterance = new SpeechSynthesisUtterance(content);
-    utterance.lang = voiceLanguage;
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    const voices = window.speechSynthesis.getVoices();
-    const languagePrefix = voiceLanguage.split('-')[0].toLowerCase();
-    const matchingVoice = voices.find((voice) => voice.lang.toLowerCase() === voiceLanguage.toLowerCase())
-      ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
-    if (matchingVoice) utterance.voice = matchingVoice;
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => {
-      if (utteranceRef.current === utterance) {
-        utteranceRef.current = null;
-        setIsSpeaking(false);
-      }
-    };
-    utterance.onerror = (event) => {
-      if (utteranceRef.current === utterance) {
-        utteranceRef.current = null;
-        setIsSpeaking(false);
-        if (event.error !== 'canceled' && event.error !== 'interrupted') {
-          setSpeechError('Browser could not speak this reply. Check available speech voices and audio settings.');
-        }
-      }
-    };
-    utteranceRef.current = utterance;
-    window.speechSynthesis.speak(utterance);
-  }, [voiceLanguage]);
 
   const speakLastReply = useCallback(() => {
     const lastReply = [...messages].reverse().find((message) => message.role === 'assistant' && message.content.trim());
