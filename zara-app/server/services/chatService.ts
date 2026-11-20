@@ -126,7 +126,18 @@ export async function sendChatMessage(
       updateThreadTitle(threadId, content.replace(/\s+/g, ' ').slice(0, 60));
     }
 
-    const history = getMessagesByThread(threadId).slice(-21);
+    const recentHistory = getMessagesByThread(threadId).slice(-21);
+    let remainingHistoryChars = 24000;
+    const boundedHistory: ChatMessage[] = [];
+
+    for (const message of [...recentHistory].reverse()) {
+      if (remainingHistoryChars <= 0) break;
+      const boundedContent = message.content.slice(0, remainingHistoryChars);
+      boundedHistory.push({ role: message.role, content: boundedContent });
+      remainingHistoryChars -= boundedContent.length;
+    }
+    boundedHistory.reverse();
+
     const savedMemories = getSetting<Array<{ content?: unknown }>>(
       'zara.memory.entries',
       [],
@@ -151,10 +162,7 @@ export async function sendChatMessage(
               memoryLines.map((line, index) => (index + 1) + '. ' + line).join('\n'),
           }]
         : []),
-      ...history.map((message) => ({
-        role: message.role,
-        content: message.content,
-      })),
+      ...boundedHistory,
     ];
 
     const response = await streamWithFailover(
