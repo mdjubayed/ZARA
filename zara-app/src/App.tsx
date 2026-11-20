@@ -13,6 +13,8 @@ type ProviderId = 'omniroute' | 'freellmapi';
 type Provider = { id: ProviderId; name: string; status: string; enabled: number };
 type Thread = { id: string; title: string; updated_at?: string };
 type SearchResult = { id: string; thread_id: string; thread_title: string; content: string; role: 'user' | 'assistant' | 'system' };
+type MemoryEntry = { id: string; content: string; createdAt: string };
+type AgentTemplate = { id: string; name: string; description: string; prompt: string };
 type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; created_at?: string };
 
 interface BrowserSpeechRecognition extends EventTarget {
@@ -56,6 +58,11 @@ export default function App() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyQuery, setHistoryQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [memories, setMemories] = useState<MemoryEntry[]>([]);
+  const [memoryDraft, setMemoryDraft] = useState('');
+  const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
+  const [agentDraft, setAgentDraft] = useState({ name: '', description: '', prompt: '' });
+  const [toolPrompt, setToolPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -78,6 +85,13 @@ export default function App() {
   useEffect(() => {
     let active = true;
     api('/health').then(() => { if (active) setOnline(true); }).catch(() => { if (active) setOnline(false); });
+    api<{ value: MemoryEntry[] }>('/settings/zara.memory.entries')
+      .then((result) => { if (active && Array.isArray(result.value)) setMemories(result.value); })
+      .catch(() => { if (active) setMemories([]); });
+    api<{ value: AgentTemplate[] }>('/settings/zara.agent.templates')
+      .then((result) => { if (active && Array.isArray(result.value)) setAgentTemplates(result.value); })
+      .catch(() => { if (active) setAgentTemplates([]); });
+
     api<{ providers: Provider[] }>('/providers')
       .then((result) => { if (active) setProviders(result.providers); })
       .catch(() => { if (active) setProviders([]); });
@@ -178,6 +192,49 @@ export default function App() {
       setBusy(false);
     }
   }, [autoSpeak, busy, input, refreshProviders, selectedProvider, threadId, voiceLanguage]);
+
+  const saveMemories = async (next: MemoryEntry[]) => {
+    await api('/settings/zara.memory.entries', { method: 'PATCH', body: JSON.stringify({ value: next }) });
+    setMemories(next);
+  };
+
+  const addMemory = async () => {
+    const content = memoryDraft.trim();
+    if (!content) return;
+    try {
+      await saveMemories([{ id: crypto.randomUUID(), content, createdAt: new Date().toISOString() }, ...memories]);
+      setMemoryDraft('');
+      setToast('Memory saved on this ZARA server.');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not save memory');
+    }
+  };
+
+  const deleteMemory = async (id: string) => {
+    try { await saveMemories(memories.filter((entry) => entry.id !== id)); }
+    catch (error) { setToast(error instanceof Error ? error.message : 'Could not delete memory'); }
+  };
+
+  const saveAgents = async (next: AgentTemplate[]) => {
+    await api('/settings/zara.agent.templates', { method: 'PATCH', body: JSON.stringify({ value: next }) });
+    setAgentTemplates(next);
+  };
+
+  const addAgentTemplate = async () => {
+    const name = agentDraft.name.trim();
+    const prompt = agentDraft.prompt.trim();
+    if (!name || !prompt) return;
+    try {
+      await saveAgents([{ id: crypto.randomUUID(), name, description: agentDraft.description.trim(), prompt }, ...agentTemplates]);
+      setAgentDraft({ name: '', description: '', prompt: '' });
+      setToast('Agent template saved. It does not run background actions.');
+    } catch (error) { setToast(error instanceof Error ? error.message : 'Could not save agent template'); }
+  };
+
+  const runToolPrompt = (prompt: string) => {
+    setInput(prompt);
+    setTab('chat');
+  };
 
   const openThread = async (id: string) => {
     try {
@@ -343,8 +400,39 @@ export default function App() {
             <button className="secondary-button" onClick={() => setTab('chat')}>Open Text Chat <ArrowRight size={16} /></button>
           </section>
         )}
-        {tab !== 'home' && tab !== 'chat' && tab !== 'settings' && tab !== 'voice' && (
-          <section className="coming-page"><div className="coming-icon">{tab === 'memory' ? <Grid2X2 /> : tab === 'agents' ? <Bot /> : tab === 'tools' ? <Zap /> : tab === 'files' ? <Folder /> : <Info />}</div><h1>{pageTitle}</h1><p>This module is planned for a later integration phase. Its controls will be enabled only when the required service and permissions are ready.</p><button onClick={() => setTab('chat')}>Go to Chat <ArrowRight size={16} /></button></section>
+        {tab === 'memory' && (
+          <section className="module-page">
+            <div className="section-title"><h1>Conversation Memory</h1><p>Save information you explicitly want ZARA to remember. Memories stay in this ZARA server's settings database.</p></div>
+            <div className="memory-composer"><textarea value={memoryDraft} onChange={(event) => setMemoryDraft(event.target.value)} placeholder="Write a useful note for future conversations…" rows={3} /><button onClick={() => void addMemory()} disabled={!memoryDraft.trim()}>Save Memory</button></div>
+            <div className="memory-list">{memories.map((entry) => <article className="memory-item" key={entry.id}><p>{entry.content}</p><small>{new Date(entry.createdAt).toLocaleString()}</small><button onClick={() => void deleteMemory(entry.id)}>Delete</button></article>)}{memories.length === 0 && <p>No memories saved. Add only information you want ZARA to use later.</p>}</div>
+          </section>
+        )}
+        {tab === 'agents' && (
+          <section className="module-page">
+            <div className="section-title"><h1>AI Agent Templates</h1><p>Create reusable instructions for ZARA. Templates only prepare a prompt; they do not run autonomous tasks.</p></div>
+            <div className="agent-form"><input value={agentDraft.name} onChange={(event) => setAgentDraft((v) => ({ ...v, name: event.target.value }))} placeholder="Agent name" /><input value={agentDraft.description} onChange={(event) => setAgentDraft((v) => ({ ...v, description: event.target.value }))} placeholder="Short description (optional)" /><textarea rows={4} value={agentDraft.prompt} onChange={(event) => setAgentDraft((v) => ({ ...v, prompt: event.target.value }))} placeholder="Instructions for this agent…" /><button onClick={() => void addAgentTemplate()} disabled={!agentDraft.name.trim() || !agentDraft.prompt.trim()}>Save Template</button></div>
+            <div className="agent-list">{agentTemplates.map((agent) => <article className="agent-item" key={agent.id}><h3>{agent.name}</h3><p>{agent.description}</p><pre>{agent.prompt}</pre><div><button onClick={() => runToolPrompt(agent.prompt)}>Use in Chat</button><button onClick={() => void saveAgents(agentTemplates.filter((item) => item.id !== agent.id))}>Delete</button></div></article>)}{agentTemplates.length === 0 && <p>No agent templates created yet.</p>}</div>
+          </section>
+        )}
+        {tab === 'tools' && (
+          <section className="module-page">
+            <div className="section-title"><h1>ZARA Tools</h1><p>Safe prompt helpers for common tasks. Nothing runs on your computer automatically.</p></div>
+            <div className="tool-grid">
+              {[
+                ['Explain & Learn', 'Explain a topic step by step in simple Bengali or English.'],
+                ['Writing Assistant', 'Help me draft or improve a clear, well-structured message.'],
+                ['Coding Helper', 'Help me understand, write, and review code. Explain changes before suggesting them.'],
+                ['Research Planner', 'Help me plan research and identify reliable sources to consult.']
+              ].map(([name, prompt]) => <article className="tool-card" key={name}><h3>{name}</h3><p>{prompt}</p><button onClick={() => runToolPrompt(prompt)}>Use Tool</button></article>)}
+            </div>
+            <div className="tool-custom"><label htmlFor="custom-tool-prompt">Custom instruction</label><textarea id="custom-tool-prompt" rows={3} value={toolPrompt} onChange={(event) => setToolPrompt(event.target.value)} placeholder="Describe what you want ZARA to help with…" /><button onClick={() => runToolPrompt(toolPrompt)} disabled={!toolPrompt.trim()}>Send to Chat</button></div>
+          </section>
+        )}
+        {tab === 'files' && (
+          <section className="coming-page"><div className="coming-icon"><Folder /></div><h1>Workspace Files</h1><p>Direct file and desktop access is not enabled in this browser build. It needs a restricted workspace boundary and explicit permission before files can be read or changed.</p><button onClick={() => setTab('chat')}>Go to Chat <ArrowRight size={16} /></button></section>
+        )}
+        {tab === 'about' && (
+          <section className="coming-page"><div className="coming-icon"><Info /></div><h1>About ZARA</h1><p>ZARA is one bilingual assistant with one Brain Manager. OmniRoute is primary and FreeLLMAPI is the automatic backup. Provider credentials remain private on the backend.</p><button onClick={() => setTab('settings')}>Brain Settings <ArrowRight size={16} /></button></section>
         )}
       </main>
       {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X size={16} /></button></div>}
