@@ -37,7 +37,7 @@ Create a private environment file from the example:
 cp .env.example .env
 ```
 
-Keep both provider API key and model values blank until you configure them yourself in your private environment. Never commit `.env`, paste credentials into source code, or store provider credentials in SQLite or application settings.
+Keep both provider API key and model values blank by default. After privately configuring a provider key, use Settings → AI Brain Settings to discover available models, choose one, and verify it; a model may also be supplied through its environment variable. Never commit `.env`, paste credentials into source code, or store provider credentials in SQLite or application settings.
 
 Start the API server in one terminal:
 
