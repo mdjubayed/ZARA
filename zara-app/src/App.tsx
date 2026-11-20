@@ -76,7 +76,7 @@ export default function App() {
       })
       .catch(() => setOnline(false));
     return () => { active = false; };
-  }, [refreshProviders]);
+  }, []);
 
   const startNewChat = useCallback(async () => {
     try {
