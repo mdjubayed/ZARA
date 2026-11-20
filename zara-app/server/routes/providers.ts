@@ -11,6 +11,7 @@ import {
 } from '../db/repositories/providerRepository.js';
 import { verifyProvider } from '../services/brainManager.js';
 import { initializeProviderAdapters } from '../services/providerAdapters.js';
+import { hasProviderApiKey } from '../services/secretStore.js';
 
 export const providerRouter = Router();
 
@@ -43,12 +44,16 @@ providerRouter.get('/:id', (req, res) => {
 providerRouter.post('/:id/verify', async (req, res) => {
   const id = req.params.id;
   if (!isSupportedProviderId(id)) return res.status(404).json({ error: 'PROVIDER_NOT_FOUND' });
+  if (!hasProviderApiKey(id)) {
+    setProviderStatus(id, 'unconfigured');
+    return res.status(409).json({ error: 'PROVIDER_API_KEY_NOT_CONFIGURED' });
+  }
+  const model = (id === 'omniroute' ? process.env.OMNIROUTE_MODEL : process.env.FREELLMAPI_MODEL)?.trim();
+  if (!model) return res.status(409).json({ error: 'PROVIDER_MODEL_NOT_CONFIGURED' });
   try {
     initializeProviderAdapters();
     const models = await verifyProvider(id);
     if (models.length === 0) return res.status(502).json({ error: 'PROVIDER_NO_MODELS_RETURNED' });
-    const model = (id === 'omniroute' ? process.env.OMNIROUTE_MODEL : process.env.FREELLMAPI_MODEL)?.trim();
-    if (!model) return res.status(400).json({ error: 'PROVIDER_MODEL_NOT_CONFIGURED', models });
     if (model !== 'auto' && !models.includes(model)) {
       return res.status(400).json({ error: 'PROVIDER_MODEL_NOT_AVAILABLE', models });
     }
