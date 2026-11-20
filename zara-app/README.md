@@ -27,6 +27,10 @@ No additional AI providers are part of this architecture.
 
 On first launch, ZARA asks you to create a single-owner password (12–128 characters). Later launches require that password. Passwords are stored as salted scrypt hashes, and session cookies are HttpOnly, SameSite=Strict, and Secure when served over HTTPS. Application APIs require an owner session; see [AUTHENTICATION.md](./AUTHENTICATION.md) for deployment requirements and limitations.
 
+## Production deployment
+
+A multi-stage Docker image and persistent Docker Compose setup are included. See [DEPLOYMENT.md](./DEPLOYMENT.md). The container serves the built frontend and protected API together; keep it behind HTTPS before remote access. The compose file binds the backend to loopback and persists SQLite data in a Docker volume.
+
 ## Local development
 
 Install dependencies:
@@ -62,6 +66,8 @@ The Vite development server proxies `/api` requests to the ZARA API on port 3002
 | Variable | Purpose | Default |
 | --- | --- | --- |
 | `PORT` | ZARA API port | `3002` |
+| `HOST` | API bind address | `127.0.0.1` |
+| `SERVE_FRONTEND` | Serve built frontend from Express | `false` |
 | `NODE_ENV` | Runtime environment | `development` |
 | `ZARA_DATA_DIR` | SQLite data directory | `./data` |
 | `OMNIROUTE_BASE_URL` | OmniRoute OpenAI-compatible API root | `http://127.0.0.1:20128/v1` |
