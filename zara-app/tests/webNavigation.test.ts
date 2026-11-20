@@ -18,6 +18,7 @@ test('blocks unsafe or age-restricted search topics', () => {
   assert.equal(isAllowedWebSearchQuery('ordinary science homework'), true);
   assert.equal(isAllowedWebSearchQuery('how to gamble online'), false);
   assert.equal(isAllowedWebSearchQuery('অস্ত্র সম্পর্কে তথ্য'), false);
+  assert.throws(() => buildWebSearchUrl('how to gamble online'), /INVALID_WEB_SEARCH_QUERY/);
 });
 
 test('accepts public HTTPS URLs and strips fragments', () => {
