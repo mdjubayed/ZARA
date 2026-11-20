@@ -45,7 +45,9 @@
   },
   "allowScripts": {
     "better-sqlite3@13.2.0": true,
-    "esbuild@0.28.2": true
+    "esbuild@0.28.2": true,
+    "electron@45.4.1": true,
+    "electron-builder@26.17.0": true
   },
   "main": "electron/main.cjs",
   "build": {
