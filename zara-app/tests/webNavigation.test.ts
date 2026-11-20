@@ -40,6 +40,8 @@ test('rejects credentials, IP literals, and local hostnames', () => {
   assert.equal(validateWebPageUrl('https://[::1]').ok, false);
   assert.equal(validateWebPageUrl('https://printer.local').ok, false);
   assert.equal(validateWebPageUrl('https://service.internal').ok, false);
+  assert.equal(validateWebPageUrl('https://example.com:8443').ok, false);
+  assert.equal(validateWebPageUrl('https://printer.localdomain.').ok, false);
 });
 
 test('rejects excessively long page URLs', () => {
