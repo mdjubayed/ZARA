@@ -350,6 +350,38 @@ export default function App() {
     } catch (error) { setToast(error instanceof Error ? error.message : 'Could not save agent template'); }
   };
 
+  const runDesktopApp = async (appId: 'notepad' | 'calculator', label: string) => {
+    const desktop = window.zaraDesktop;
+    if (!desktop?.isDesktop) {
+      setToast('This action is available in the installed Windows desktop app.');
+      return;
+    }
+    if (!window.confirm(`Allow ZARA to open ${label}?`)) return;
+    try {
+      const result = await desktop.launchApp(appId);
+      setToast(result.ok ? `${label} opened.` : result.error === 'APP_NOT_SUPPORTED'
+        ? 'This app is available only on Windows.'
+        : 'ZARA could not open that app.');
+    } catch {
+      setToast('The desktop action could not be completed.');
+    }
+  };
+
+  const openDesktopBrowser = async () => {
+    const desktop = window.zaraDesktop;
+    if (!desktop?.isDesktop) {
+      setToast('Open the ZARA Windows desktop app to use this action.');
+      return;
+    }
+    if (!window.confirm('Allow ZARA to open the default browser?')) return;
+    try {
+      const result = await desktop.openExternal('https://www.google.com');
+      setToast(result.ok ? 'Default browser opened.' : 'Could not open the default browser.');
+    } catch {
+      setToast('Could not open the default browser.');
+    }
+  };
+
   const runToolPrompt = (prompt: string) => {
     setInput(prompt);
     setTab('chat');
@@ -579,6 +611,7 @@ export default function App() {
                 ['Research Planner', 'Help me plan research and identify reliable sources to consult.']
               ].map(([name, prompt]) => <article className="tool-card" key={name}><h3>{name}</h3><p>{prompt}</p><button onClick={() => runToolPrompt(prompt)}>Use Tool</button></article>)}
             </div>
+            {window.zaraDesktop?.isDesktop && <div className="desktop-actions"><h2>Windows Desktop Actions</h2><p>These actions run only after you confirm them. ZARA can open these approved apps; it cannot close or control other programs.</p><div className="desktop-action-buttons"><button onClick={() => void runDesktopApp('notepad', 'Notepad')}>Open Notepad</button><button onClick={() => void runDesktopApp('calculator', 'Calculator')}>Open Calculator</button><button onClick={() => void openDesktopBrowser()}>Open Browser</button></div></div>}
             <div className="tool-custom"><label htmlFor="custom-tool-prompt">Custom instruction</label><textarea id="custom-tool-prompt" rows={3} value={toolPrompt} onChange={(event) => setToolPrompt(event.target.value)} placeholder="Describe what you want ZARA to help with…" /><button onClick={() => runToolPrompt(toolPrompt)} disabled={!toolPrompt.trim()}>Send to Chat</button></div>
           </section>
         )}
