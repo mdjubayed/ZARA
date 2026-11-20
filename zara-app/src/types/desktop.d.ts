@@ -1,7 +1,11 @@
 export type ZaraDesktopAppId = 'notepad' | 'calculator';
+export type ZaraDesktopProviderId = 'omniroute' | 'freellmapi';
 
 export interface ZaraDesktopBridge {
   readonly isDesktop: true;
+  getProviderKeyStatus(): Promise<{ available: boolean; omniroute: boolean; freellmapi: boolean }>;
+  saveProviderKey(providerId: ZaraDesktopProviderId, apiKey: string): Promise<{ ok: boolean; error?: string }>;
+  clearProviderKey(providerId: ZaraDesktopProviderId): Promise<{ ok: boolean; error?: string }>;
   launchApp(appId: ZaraDesktopAppId): Promise<{ ok: boolean; error?: string }>;
   openExternal(url: string): Promise<{ ok: boolean; error?: string }>;
 }
