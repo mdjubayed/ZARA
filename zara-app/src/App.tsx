@@ -104,7 +104,7 @@ export default function App() {
           const result = await api<{ messages: Message[] }>(`/threads/${loadedThreads[0].id}/messages`);
           if (active) setMessages(result.messages);
         } else {
-          const result = await api<{ thread: { id: string } }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
+          const result = await api<{ thread: Thread }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
           if (active) { setThreadId(result.thread.id); setThreads([result.thread]); }
         }
       })
