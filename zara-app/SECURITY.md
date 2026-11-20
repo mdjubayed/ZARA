@@ -5,6 +5,8 @@
 - OmniRoute and FreeLLMAPI credentials are read only from backend environment variables.
 - The frontend never receives provider credentials.
 - Provider secrets must not be stored in SQLite settings or provider configuration records.
+- The packaged Windows desktop app stores provider keys in a separate encrypted file using Electron `safeStorage` with Windows DPAPI. The renderer never reads the saved key back; it receives only configured/not-configured status.
+- Windows DPAPI protects data for the current Windows user account. It is not protection against malware or other code already running as that same user.
 - The `.env` file is ignored by Git, but local environment files are still plaintext files on disk. Prefer Codespaces/host secret injection for deployed environments and protect local workspace access.
 - Database startup removes unsupported legacy provider rows, clears provider config blobs, and removes secret-like keys from legacy settings.
 
