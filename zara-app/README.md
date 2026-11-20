@@ -98,7 +98,7 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 
 ## Security notes
 
-See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deployment guidance, and limitations.
+See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deployment guidance, and limitations. See [WEB.md](./WEB.md) for the browser search and reader safety boundary.
 
 - Provider keys are read from backend environment variables or the Windows desktop secure-storage bridge; never from application settings.
 - Every application data and provider API route requires a valid owner session.
