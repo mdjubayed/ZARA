@@ -4,6 +4,8 @@ ZARA is a bilingual Bengali/English personal AI assistant with a React frontend 
 
 ## Approved AI architecture
 
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for the request lifecycle, failover rules, and component boundaries.
+
 ZARA uses one Brain Manager and exactly two approved AI providers:
 
 1. **OmniRoute** — primary provider.
