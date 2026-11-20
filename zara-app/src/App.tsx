@@ -439,7 +439,7 @@ export default function App() {
         <header className="topbar">
           <div className="mobile-brand">ZARA <span>{pageTitle}</span></div>
           <div className={`online-pill ${online ? 'is-online' : 'is-offline'}`}><i />{online ? 'Online' : 'Offline'}<ChevronDown size={15} /></div>
-          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => setAutoSpeak((value) => !value)} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
+          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => { setAutoSpeak((value) => !value); if (autoSpeak && "speechSynthesis" in window) window.speechSynthesis.cancel(); }} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
         </header>
 
         {tab === 'home' && (
@@ -507,6 +507,11 @@ export default function App() {
             <button onClick={voiceListening ? stopVoiceRecognition : startVoiceRecognition} disabled={busy}>{voiceListening ? 'Stop Listening' : 'Start Speaking'} <Mic size={17} /></button>
             {voiceError && <p role="alert">{voiceError}</p>}
             {voiceListening && <p>Listening… Speak now.</p>}
+            <div className="voice-transcript">
+              {messages.slice(-6).map((message) => (
+                <article key={message.id}><strong>{message.role === 'user' ? 'You' : 'ZARA'}</strong><p>{message.content}</p></article>
+              ))}
+            </div>
             <button className="secondary-button" onClick={() => setTab('chat')}>Open Text Chat <ArrowRight size={16} /></button>
           </section>
         )}
