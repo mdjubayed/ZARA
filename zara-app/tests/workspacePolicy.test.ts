@@ -26,6 +26,8 @@ test('rejects likely credential and secret files', () => {
   assert.equal(isSafeWorkspacePath('api-token.txt'), false);
   assert.equal(isSafeWorkspacePath('private-key.pem'), false);
   assert.equal(isSafeWorkspacePath('credentials/config.json'), false);
+  assert.equal(isSafeWorkspacePath('private-notes/readme.md'), false);
+  assert.equal(isSafeWorkspaceDirectory('secrets'), false);
 });
 
 test('rejects traversal and absolute paths', () => {
