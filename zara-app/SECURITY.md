@@ -41,7 +41,7 @@
 - File saves overwrite only the selected file and require a confirmation prompt.
 - The web app does not offer file deletion, shell execution, or unrestricted filesystem access.
 - The Windows Electron renderer has no Node integration and uses a sandboxed, context-isolated preload bridge.
-- The preload bridge exposes only an allowlist for opening Notepad/Calculator and opening validated HTTP(S) links in the system browser. Each UI action requires explicit confirmation; arbitrary command execution is not exposed.
+- The preload bridge exposes only allowlisted Notepad/Calculator launch, validated HTTP(S) external links, and native text-file dialogs. File reads require a user-selected UTF-8 text/source file no larger than 500 KB. File writes use a user-selected Save As destination and a separate confirmation; allowed text extensions are enforced. Arbitrary path arguments, file deletion, and command execution are not exposed.
 
 ## Current security boundary
 
