@@ -108,12 +108,12 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 - Do not expose provider ports to an untrusted network.
 - On database startup, unsupported legacy provider rows are removed, provider configuration blobs are cleared, and secret-like keys are scrubbed from legacy settings.
 - Configure production CORS origins explicitly.
-- File and desktop automation features must use explicit permissions and safe workspace boundaries when implemented.
+- Browser workspace edits and native desktop actions require explicit user selection or confirmation and remain limited to their documented allowlists.
 
 ## Implemented frontend capabilities
 
 - Bengali and English browser voice input using the browser speech-recognition API when supported.
-- Browser speech synthesis for spoken replies to voice requests.
+- Browser speech synthesis for spoken replies to voice requests, with Bengali/English voice matching when the browser provides a suitable voice, a read-last-reply control, and stop-speaking support.
 - Conversation history with open, rename, delete, and full-text search.
 - User-managed persistent memory notes stored in the ZARA settings database and included as bounded context in later chats.
 - Reusable agent instruction templates. These prepare prompts only and do not run autonomous background actions.
@@ -138,6 +138,6 @@ Deploy the frontend over HTTPS, open ZARA in a compatible browser, and use the b
 
 - Browser voice recognition availability and language quality depend on the browser and operating system. Speech recognition may require browser permission and an internet connection; the browser provider may process voice input through its own online service.
 - File access is limited to a user-selected folder through the browser File System Access API. Only supported text/source files are opened, edits require confirmation, and file deletion or shell execution is not available. Browser support requires a secure context and a compatible browser.
-- A Windows Electron desktop packaging foundation is included. See [DESKTOP.md](./DESKTOP.md). The NSIS installer has not yet been built or verified. Native Windows automation, arbitrary file modification, background autonomous agents, external browser automation, advanced long-term semantic memory, and Android APK packaging are not implemented.
+- A Windows Electron desktop packaging foundation is included. See [DESKTOP.md](./DESKTOP.md). The NSIS installer has not yet been built or verified. Native Windows automation beyond the confirmed Notepad/Calculator/browser actions, arbitrary file modification, background autonomous agents, external browser automation, and advanced semantic memory are not implemented. Android APK packaging has a manual workflow but remains unbuilt and unverified.
 - Provider API calls cannot be verified until valid credentials and reachable provider services are configured privately. The UI must keep provider key and model fields blank by default.
 - Do not describe a planned feature as complete until it has actually been implemented and verified.
