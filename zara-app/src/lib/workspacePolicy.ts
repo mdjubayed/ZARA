@@ -11,6 +11,12 @@ const BLOCKED_DIRECTORY_NAMES = new Set([
 
 const SENSITIVE_FILE_NAME = /(^|[._-])(secret|secrets|credential|credentials|password|passwd|token|private|id_rsa|id_ed25519|keystore|wallet)([._-]|$)|^\.env($|\.)/i;
 
+export function isSafeWorkspaceDirectory(relativePath: string): boolean {
+  if (!relativePath || relativePath.length > 1024 || relativePath.startsWith('/') || relativePath.includes('\\\\')) return false;
+  const segments = relativePath.split('/');
+  return !segments.some((segment) => !segment || segment === '.' || segment === '..' || segment.startsWith('.') || BLOCKED_DIRECTORY_NAMES.has(segment.toLowerCase()));
+}
+
 export function isSafeWorkspacePath(relativePath: string): boolean {
   if (!relativePath || relativePath.length > 1024 || relativePath.startsWith('/') || relativePath.includes('\\')) return false;
   const segments = relativePath.split('/');
