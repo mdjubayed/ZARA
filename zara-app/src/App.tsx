@@ -27,7 +27,6 @@ interface WorkspaceDirectoryHandle {
   name: string;
   entries(): AsyncIterable<[string, WorkspaceFileHandle | WorkspaceDirectoryHandle]>;
 }
-type WorkspaceHandle = WorkspaceFileHandle | WorkspaceDirectoryHandle;
 type DirectoryPickerWindow = Window & {
   showDirectoryPicker?: (options?: { mode: 'readwrite' }) => Promise<WorkspaceDirectoryHandle>;
 };
