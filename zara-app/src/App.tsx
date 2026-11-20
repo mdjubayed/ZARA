@@ -15,6 +15,24 @@ type Thread = { id: string; title: string; updated_at?: string };
 type SearchResult = { id: string; thread_id: string; thread_title: string; content: string; role: 'user' | 'assistant' | 'system' };
 type MemoryEntry = { id: string; content: string; createdAt: string };
 type AgentTemplate = { id: string; name: string; description: string; prompt: string };
+
+interface WorkspaceFileHandle {
+  kind: 'file';
+  name: string;
+  getFile(): Promise<File>;
+  createWritable(): Promise<{ write(data: string): Promise<void>; close(): Promise<void> }>;
+}
+interface WorkspaceDirectoryHandle {
+  kind: 'directory';
+  name: string;
+  entries(): AsyncIterable<[string, WorkspaceFileHandle | WorkspaceDirectoryHandle]>;
+}
+type WorkspaceHandle = WorkspaceFileHandle | WorkspaceDirectoryHandle;
+type DirectoryPickerWindow = Window & {
+  showDirectoryPicker?: (options?: { mode: 'readwrite' }) => Promise<WorkspaceDirectoryHandle>;
+};
+type WorkspaceFileItem = { path: string; handle: WorkspaceFileHandle };
+
 type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; created_at?: string };
 
 interface BrowserSpeechRecognition extends EventTarget {
@@ -63,6 +81,11 @@ export default function App() {
   const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
   const [agentDraft, setAgentDraft] = useState({ name: '', description: '', prompt: '' });
   const [toolPrompt, setToolPrompt] = useState('');
+  const [workspaceHandle, setWorkspaceHandle] = useState<WorkspaceDirectoryHandle | null>(null);
+  const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileItem[]>([]);
+  const [selectedWorkspacePath, setSelectedWorkspacePath] = useState('');
+  const [workspaceContent, setWorkspaceContent] = useState('');
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
@@ -192,6 +215,78 @@ export default function App() {
       setBusy(false);
     }
   }, [autoSpeak, busy, input, refreshProviders, selectedProvider, threadId, voiceLanguage]);
+
+  const openWorkspace = async () => {
+    const pickerWindow = window as DirectoryPickerWindow;
+    if (!pickerWindow.showDirectoryPicker) {
+      setToast('Folder access is not supported in this browser. Use the latest Chrome or Edge.');
+      return;
+    }
+    try {
+      setWorkspaceBusy(true);
+      const directory = await pickerWindow.showDirectoryPicker({ mode: 'readwrite' });
+      const collected: WorkspaceFileItem[] = [];
+      const scan = async (folder: WorkspaceDirectoryHandle, prefix = '', depth = 0): Promise<void> => {
+        if (depth > 3 || collected.length >= 200) return;
+        for await (const [name, handle] of folder.entries()) {
+          if (collected.length >= 200) break;
+          const relativePath = prefix ? prefix + '/' + name : name;
+          if (handle.kind === 'file') {
+            collected.push({ path: relativePath, handle });
+          } else if (depth < 3) {
+            await scan(handle, relativePath, depth + 1);
+          }
+        }
+      };
+      await scan(directory);
+      setWorkspaceHandle(directory);
+      setWorkspaceFiles(collected.sort((a, b) => a.path.localeCompare(b.path)));
+      setSelectedWorkspacePath('');
+      setWorkspaceContent('');
+      setToast('Folder opened. Only this selected folder is available to ZARA.');
+    } catch (error) {
+      if (error instanceof Error && error.name !== 'AbortError') {
+        setToast('Could not open folder: ' + error.message);
+      }
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const openWorkspaceFile = async (item: WorkspaceFileItem) => {
+    try {
+      setWorkspaceBusy(true);
+      const file = await item.handle.getFile();
+      if (file.size > 500000) {
+        setToast('This file is larger than the 500 KB editor limit.');
+        return;
+      }
+      const content = await file.text();
+      setSelectedWorkspacePath(item.path);
+      setWorkspaceContent(content);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not read file');
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
+  const saveWorkspaceFile = async () => {
+    const selected = workspaceFiles.find((item) => item.path === selectedWorkspacePath);
+    if (!selected) return;
+    if (!window.confirm('Save changes to ' + selected.path + '? This will overwrite the selected file.')) return;
+    try {
+      setWorkspaceBusy(true);
+      const writable = await selected.handle.createWritable();
+      await writable.write(workspaceContent);
+      await writable.close();
+      setToast('File saved successfully.');
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : 'Could not save file');
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
 
   const saveMemories = async (next: MemoryEntry[]) => {
     await api('/settings/zara.memory.entries', { method: 'PATCH', body: JSON.stringify({ value: next }) });
@@ -439,7 +534,25 @@ export default function App() {
           </section>
         )}
         {tab === 'files' && (
-          <section className="coming-page"><div className="coming-icon"><Folder /></div><h1>Workspace Files</h1><p>Direct file and desktop access is not enabled in this browser build. It needs a restricted workspace boundary and explicit permission before files can be read or changed.</p><button onClick={() => setTab('chat')}>Go to Chat <ArrowRight size={16} /></button></section>
+          <section className="module-page">
+            <div className="section-title"><h1>Workspace Files</h1><p>Choose one folder to let ZARA list, read, and edit text files inside it. ZARA cannot browse outside that folder or delete files.</p></div>
+            <div className="workspace-toolbar"><button onClick={() => void openWorkspace()} disabled={workspaceBusy}><Folder size={17} /> {workspaceHandle ? 'Choose Another Folder' : 'Choose Folder'}</button><span>{workspaceHandle ? 'Selected folder: ' + workspaceHandle.name : 'No folder selected'}</span></div>
+            {workspaceHandle && (
+              <div className="workspace-layout">
+                <div className="workspace-file-list">
+                  <strong>Files (up to 200 items, 3 folder levels)</strong>
+                  {workspaceFiles.map((item) => <button className={selectedWorkspacePath === item.path ? 'selected' : ''} key={item.path} onClick={() => void openWorkspaceFile(item)}>{item.path}</button>)}
+                  {workspaceFiles.length === 0 && <p>No files found in the selected folder.</p>}
+                </div>
+                <div className="workspace-editor">
+                  <strong>{selectedWorkspacePath || 'Select a text file'}</strong>
+                  <textarea value={workspaceContent} onChange={(event) => setWorkspaceContent(event.target.value)} placeholder="Selected file contents will appear here…" disabled={!selectedWorkspacePath || workspaceBusy} />
+                  <div><button onClick={() => void saveWorkspaceFile()} disabled={!selectedWorkspacePath || workspaceBusy}>Save Selected File</button><button className="secondary-button" onClick={() => { setSelectedWorkspacePath(''); setWorkspaceContent(''); }}>Close File</button></div>
+                </div>
+              </div>
+            )}
+            <p className="workspace-safety">Safety: folder access is granted by your browser. Only text content up to 500 KB can be opened. Saving always requires your confirmation. No file deletion or command execution is available.</p>
+          </section>
         )}
         {tab === 'about' && (
           <section className="coming-page"><div className="coming-icon"><Info /></div><h1>About ZARA</h1><p>ZARA is one bilingual assistant with one Brain Manager. OmniRoute is primary and FreeLLMAPI is the automatic backup. Provider credentials remain private on the backend.</p><button onClick={() => setTab('settings')}>Brain Settings <ArrowRight size={16} /></button></section>
