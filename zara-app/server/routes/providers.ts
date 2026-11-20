@@ -51,11 +51,14 @@ providerRouter.post('/:id/verify', async (req, res) => {
     setProviderStatus(id, 'unconfigured');
     return res.status(409).json({ error: 'PROVIDER_API_KEY_NOT_CONFIGURED' });
   }
-  const model = getProviderModel(id);
   try {
     initializeProviderAdapters();
+    const model = getProviderModel(id);
     const models = await verifyProvider(id);
-    if (models.length === 0) return res.status(502).json({ error: 'PROVIDER_NO_MODELS_RETURNED' });
+    if (models.length === 0) {
+      setProviderStatus(id, 'pending_verification');
+      return res.status(502).json({ error: 'PROVIDER_NO_MODELS_RETURNED' });
+    }
     if (!model) {
       setProviderStatus(id, 'pending_verification');
       return res.status(200).json({
