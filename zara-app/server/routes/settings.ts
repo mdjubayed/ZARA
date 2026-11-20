@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
-  getSetting,
   getAllSettings,
   setSetting,
   setMultipleSettings,
