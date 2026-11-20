@@ -259,6 +259,15 @@ export default function App() {
     }
   };
 
+  const renameThread = async (thread: Thread) => {
+    const title = window.prompt('Conversation title', thread.title)?.trim();
+    if (!title || title === thread.title) return;
+    try {
+      const result = await api<{ thread: Thread }>(`/threads/${thread.id}`, { method: 'PATCH', body: JSON.stringify({ title }) });
+      setThreads((current) => current.map((item) => item.id === thread.id ? result.thread : item));
+    } catch (error) { setToast(error instanceof Error ? error.message : 'Could not rename conversation'); }
+  };
+
   const removeThread = async (id: string) => {
     if (!window.confirm('Delete this conversation and its messages? This cannot be undone.')) return;
     try {
@@ -364,6 +373,7 @@ export default function App() {
                   {threads.map((thread) => (
                     <div className={`history-item ${thread.id === threadId ? 'selected' : ''}`} key={thread.id}>
                       <button className="history-open" onClick={() => void openThread(thread.id)}>{thread.title}</button>
+                      <button className="history-delete" aria-label="Rename conversation" onClick={() => void renameThread(thread)}>✎</button>
                       <button className="history-delete" aria-label="Delete conversation" onClick={() => void removeThread(thread.id)}>×</button>
                     </div>
                   ))}
