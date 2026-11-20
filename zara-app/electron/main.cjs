@@ -191,7 +191,8 @@ ipcMain.handle('zara:clear-provider-key', async (event, providerId) => {
   }
 });
 
-const allowedTextExtensions = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.html', '.css', '.xml', '.log', '.yml', '.yaml'];
+const allowedTextExtensions = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.html', '.css', '.xml', '.log', '.yml', '.yaml', '.toml', '.sql'];
+const sensitiveFileName = /(^|[._-])(secret|secrets|credential|credentials|password|passwd|token|private|id_rsa|id_ed25519|keystore|wallet)([._-]|$)|^\\.env($|\\.)/i;
 
 ipcMain.handle('zara:open-text-file', async (event) => {
   if (!isTrustedRenderer(event)) return { ok: false, error: 'UNAUTHORIZED_CALLER' };
@@ -204,8 +205,10 @@ ipcMain.handle('zara:open-text-file', async (event) => {
     });
     if (result.canceled || result.filePaths.length !== 1) return { ok: false, error: 'CANCELLED' };
     const filePath = result.filePaths[0];
+    const fileName = path.basename(filePath);
     const extension = path.extname(filePath).toLowerCase();
     if (!allowedTextExtensions.includes(extension)) return { ok: false, error: 'FILE_TYPE_NOT_ALLOWED' };
+    if (fileName.startsWith('.') || sensitiveFileName.test(fileName)) return { ok: false, error: 'SENSITIVE_FILE_NOT_ALLOWED' };
     const content = await readFile(filePath);
     if (content.byteLength > 512000) return { ok: false, error: 'FILE_TOO_LARGE' };
     let text;
