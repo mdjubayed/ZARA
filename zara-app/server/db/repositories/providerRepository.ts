@@ -86,10 +86,10 @@ export function setProviderStatus(
   getDatabase().prepare(`
     UPDATE providers
     SET status = ?,
-        enabled = CASE WHEN ? = 'disabled' THEN 0 ELSE enabled END,
+        enabled = 0,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(status, status, id);
+  `).run(status, id);
   return getProviderById(id);
 }
 
