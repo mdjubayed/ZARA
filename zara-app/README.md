@@ -103,12 +103,13 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 - Reusable agent instruction templates. These prepare prompts only and do not run autonomous background actions.
 - Safe prompt tools for learning, writing, coding, and research planning.
 - Explicit text-file attachments in chat, read in the browser and limited to 500 KB per file.
+- Browser-based workspace access after the user explicitly chooses a folder: list up to 200 files across three folder levels, open supported text/source files up to 500 KB, and save edits only after confirmation. No file deletion or command execution.
 - Conversation rename and deletion, with a confirmation step before deletion.
 
 ## Remaining platform boundaries
 
 - Browser voice recognition availability and language quality depend on the browser and operating system. Speech recognition may require browser permission and an internet connection.
-- File attachments are limited to user-selected text-based files. ZARA does not have unrestricted local disk or folder access.
+- File access is limited to a user-selected folder through the browser File System Access API. Only supported text/source files are opened, edits require confirmation, and file deletion or shell execution is not available. Browser support requires a secure context and a compatible browser.
 - Desktop application control, arbitrary file modification, background autonomous agents, external browser automation, advanced long-term semantic memory, and Windows/Android packaging are not implemented in this web build.
 - Provider API calls cannot be verified until valid credentials and reachable provider services are configured privately. The UI must keep provider key and model fields blank by default.
 - Do not describe a planned feature as complete until it has actually been implemented and verified.
