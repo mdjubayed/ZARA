@@ -18,8 +18,8 @@ app.use(cors({
   credentials: true,
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    const isLocalOrigin = /^https?:\\/\\/(localhost|127\\.0\\.0\\.1)(:\\d+)?$/.test(origin);
-    const isCodespacesOrigin = /^https:\\/\\/[a-zA-Z0-9-]+\\.app\\.github\\.dev$/.test(origin);
+    const isLocalOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+    const isCodespacesOrigin = /^https:\/\/[a-zA-Z0-9-]+\.app\.github\.dev$/.test(origin);
     const isAllowed = config.corsOrigins.includes(origin) || (!config.isProduction && (isLocalOrigin || isCodespacesOrigin));
     if (isAllowed) return callback(null, true);
     return callback(new Error('CORS_ORIGIN_NOT_ALLOWED'));
