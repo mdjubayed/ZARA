@@ -43,6 +43,7 @@ Both adapters use the OpenAI-compatible API shape:
 
 - `GET /v1/models` for model discovery and verification.
 - `POST /v1/chat/completions` for normal and streaming chat.
+- The provider settings screen can discover models first, then store a selected non-secret model ID in application settings. Environment model variables override the saved selection.
 - `Authorization: Bearer <provider-key>` for authentication.
 
 Default local roots:
@@ -54,7 +55,7 @@ These are local service addresses, not hosted provider endpoints. Configure the 
 
 ## Data and permissions
 
-- Provider credentials are read only from backend environment variables.
+- Provider credentials are read only from backend environment variables. Model IDs are non-secret and may be selected in the Settings screen.
 - The database startup migration removes unsupported provider rows, clears provider config JSON, and scrubs secret-like legacy settings.
 - The backend listens on loopback only; the Vite dev server proxies `/api` requests.
 - Saved memory is user-entered, bounded, and added to chat as context; it is not treated as a system instruction.
