@@ -62,10 +62,10 @@ The Vite development server proxies `/api` requests to the ZARA API on port 3002
 | `ZARA_DATA_DIR` | SQLite data directory | `./data` |
 | `OMNIROUTE_BASE_URL` | OmniRoute OpenAI-compatible API root | `http://127.0.0.1:20128/v1` |
 | `OMNIROUTE_API_KEY` | Private OmniRoute credential | blank |
-| `OMNIROUTE_MODEL` | OmniRoute model identifier | blank |
+| `OMNIROUTE_MODEL` | Optional OmniRoute model override | blank |
 | `FREELLMAPI_BASE_URL` | FreeLLMAPI OpenAI-compatible API root | `http://127.0.0.1:3001/v1` |
 | `FREELLMAPI_API_KEY` | Private FreeLLMAPI credential | blank |
-| `FREELLMAPI_MODEL` | FreeLLMAPI model identifier | blank |
+| `FREELLMAPI_MODEL` | Optional FreeLLMAPI model override | blank |
 | `PROVIDER_TIMEOUT_MS` | Provider request timeout | `60000` |
 | `CORS_ORIGINS` | Additional allowed browser origins | blank |
 
