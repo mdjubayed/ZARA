@@ -101,7 +101,10 @@ export default function App() {
   const [voiceLanguage, setVoiceLanguage] = useState<'bn-BD' | 'en-US'>('bn-BD');
   const [autoSpeak, setAutoSpeak] = useState(true);
   const [voiceError, setVoiceError] = useState('');
+  const [speechError, setSpeechError] = useState('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const activeChatController = useRef<AbortController | null>(null);
 
   const refreshProviders = useCallback(async () => {
@@ -118,6 +121,7 @@ export default function App() {
     recognitionRef.current?.stop();
     activeChatController.current?.abort();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    utteranceRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -237,11 +241,8 @@ export default function App() {
       if (!finished) throw new Error('STREAM_CLOSED_BEFORE_COMPLETION');
       refreshProviders();
       api<{ threads: Thread[] }>('/threads').then((result) => setThreads(result.threads)).catch(() => undefined);
-      if (speakResponse && autoSpeak && finalAssistantMessage?.content && 'speechSynthesis' in window) {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(finalAssistantMessage.content);
-        utterance.lang = voiceLanguage;
-        window.speechSynthesis.speak(utterance);
+      if (speakResponse && autoSpeak && finalAssistantMessage?.content) {
+        speakText(finalAssistantMessage.content);
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
@@ -254,7 +255,7 @@ export default function App() {
       if (activeChatController.current === controller) activeChatController.current = null;
       setBusy(false);
     }
-  }, [autoSpeak, busy, input, refreshProviders, selectedProvider, threadId, voiceLanguage]);
+  }, [autoSpeak, busy, input, refreshProviders, selectedProvider, speakText, threadId]);
 
   const openWorkspace = async () => {
     const pickerWindow = window as DirectoryPickerWindow;
@@ -456,6 +457,60 @@ export default function App() {
     }
   };
 
+  const stopSpeaking = useCallback(() => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    utteranceRef.current = null;
+    setIsSpeaking(false);
+  }, []);
+
+  const speakText = useCallback((text: string) => {
+    if (!('speechSynthesis' in window) || typeof SpeechSynthesisUtterance === 'undefined') {
+      setSpeechError('Spoken replies are not supported in this browser.');
+      setIsSpeaking(false);
+      return;
+    }
+    const content = text.trim();
+    if (!content) return;
+    window.speechSynthesis.cancel();
+    setSpeechError('');
+    const utterance = new SpeechSynthesisUtterance(content);
+    utterance.lang = voiceLanguage;
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    const voices = window.speechSynthesis.getVoices();
+    const languagePrefix = voiceLanguage.split('-')[0].toLowerCase();
+    const matchingVoice = voices.find((voice) => voice.lang.toLowerCase() === voiceLanguage.toLowerCase())
+      ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
+    if (matchingVoice) utterance.voice = matchingVoice;
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => {
+      if (utteranceRef.current === utterance) {
+        utteranceRef.current = null;
+        setIsSpeaking(false);
+      }
+    };
+    utterance.onerror = (event) => {
+      if (utteranceRef.current === utterance) {
+        utteranceRef.current = null;
+        setIsSpeaking(false);
+        if (event.error !== 'canceled' && event.error !== 'interrupted') {
+          setSpeechError('Browser could not speak this reply. Check available speech voices and audio settings.');
+        }
+      }
+    };
+    utteranceRef.current = utterance;
+    window.speechSynthesis.speak(utterance);
+  }, [voiceLanguage]);
+
+  const speakLastReply = useCallback(() => {
+    const lastReply = [...messages].reverse().find((message) => message.role === 'assistant' && message.content.trim());
+    if (!lastReply) {
+      setSpeechError('There is no ZARA reply to read aloud yet.');
+      return;
+    }
+    speakText(lastReply.content);
+  }, [messages, speakText]);
+
   const startVoiceRecognition = useCallback(() => {
     const speechWindow = window as SpeechRecognitionWindow;
     const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
@@ -568,7 +623,7 @@ export default function App() {
         <header className="topbar">
           <div className="mobile-brand">ZARA <span>{pageTitle}</span></div>
           <div className={`online-pill ${online ? 'is-online' : 'is-offline'}`}><i />{online ? 'Online' : 'Offline'}<ChevronDown size={15} /></div>
-          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => { setAutoSpeak((value) => !value); if (autoSpeak && "speechSynthesis" in window) window.speechSynthesis.cancel(); }} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
+          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => { setAutoSpeak((value) => !value); if (autoSpeak) stopSpeaking(); }} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
         </header>
 
         {tab === 'home' && (
@@ -636,7 +691,13 @@ export default function App() {
             <button onClick={voiceListening ? stopVoiceRecognition : startVoiceRecognition} disabled={busy}>{voiceListening ? 'Stop Listening' : 'Start Speaking'} <Mic size={17} /></button>
             {busy && <button onClick={() => activeChatController.current?.abort()}>Stop ZARA response <X size={17} /></button>}
             {voiceError && <p role="alert">{voiceError}</p>}
+            {speechError && <p role="alert">{speechError}</p>}
             {voiceListening && <p>Listening… Speak now.</p>}
+            <div className="voice-speech-controls">
+              <button onClick={isSpeaking ? stopSpeaking : speakLastReply} disabled={busy && !isSpeaking}>
+                {isSpeaking ? 'Stop Speaking' : 'Read Last Reply Aloud'} <Volume2 size={17} />
+              </button>
+            </div>
             <div className="voice-transcript">
               {messages.slice(-6).map((message) => (
                 <article key={message.id}><strong>{message.role === 'user' ? 'You' : 'ZARA'}</strong><p>{message.content}</p></article>
