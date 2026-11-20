@@ -8,6 +8,7 @@ import {
 import heroImage from './assets/zara-hero.png';
 import './App.css';
 import { getApiBase } from './lib/apiBase.js';
+import { isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
 
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
@@ -104,6 +105,7 @@ export default function App() {
   const [speechError, setSpeechError] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const nativeSpeechSessionRef = useRef<Awaited<ReturnType<typeof startNativeSpeech>> | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const activeChatController = useRef<AbortController | null>(null);
 
@@ -119,6 +121,8 @@ export default function App() {
 
   useEffect(() => () => {
     recognitionRef.current?.stop();
+    void nativeSpeechSessionRef.current?.cancel();
+    nativeSpeechSessionRef.current = null;
     activeChatController.current?.abort();
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     utteranceRef.current = null;
@@ -513,7 +517,32 @@ export default function App() {
     speakText(lastReply.content);
   }, [messages, speakText]);
 
-  const startVoiceRecognition = useCallback(() => {
+  const startVoiceRecognition = useCallback(async () => {
+    setVoiceError('');
+    if (isAndroidNativeSpeechAvailable()) {
+      try {
+        const session = await startNativeSpeech(
+          voiceLanguage,
+          (transcript) => {
+            nativeSpeechSessionRef.current = null;
+            setVoiceListening(false);
+            if (transcript) void sendMessage(transcript, true);
+          },
+          (code) => {
+            nativeSpeechSessionRef.current = null;
+            setVoiceListening(false);
+            setVoiceError('Android voice input error: ' + code);
+          },
+        );
+        nativeSpeechSessionRef.current = session;
+        setVoiceListening(true);
+      } catch (error) {
+        setVoiceListening(false);
+        setVoiceError(error instanceof Error ? error.message : 'Could not start Android voice input.');
+      }
+      return;
+    }
+
     const speechWindow = window as SpeechRecognitionWindow;
     const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
     if (!Recognition) { setVoiceError('Voice input is not supported in this browser. Try the latest Chrome or Edge.'); return; }
@@ -526,7 +555,15 @@ export default function App() {
     setVoiceListening(true);
     try { recognition.start(); } catch (error) { setVoiceListening(false); setVoiceError(error instanceof Error ? error.message : 'Could not start voice input.'); }
   }, [sendMessage, voiceLanguage]);
-  const stopVoiceRecognition = useCallback(() => { recognitionRef.current?.stop(); setVoiceListening(false); }, []);
+  const stopVoiceRecognition = useCallback(() => {
+    if (isAndroidNativeSpeechAvailable() && nativeSpeechSessionRef.current) {
+      void nativeSpeechSessionRef.current.stop().catch(() => setVoiceError('Could not stop Android voice input.'));
+      setVoiceListening(false);
+      return;
+    }
+    recognitionRef.current?.stop();
+    setVoiceListening(false);
+  }, []);
   const verifyProvider = async (id: ProviderId) => {
     setToast(`Checking ${id} connection...`);
     try {
@@ -680,7 +717,7 @@ export default function App() {
           <section className="coming-page">
             <div className="coming-icon"><Mic /></div>
             <h1>Talk with ZARA</h1>
-            <p>Speak in Bengali or English. Your browser converts speech to text and sends the transcript to the selected ZARA Brain. Browser speech recognition may use the browser provider's online service.</p>
+            <p>{isAndroidNativeSpeechAvailable() ? 'Android uses the device speech-recognition service for Bengali or English voice input. Depending on the device, audio may be processed by that service provider.' : 'Speak in Bengali or English. Your browser converts speech to text and sends the transcript to the selected ZARA Brain. Browser speech recognition may use the browser provider’s online service.'}</p>
             <div className="provider-select">
               <label htmlFor="voice-language">Language</label>
               <select id="voice-language" value={voiceLanguage} onChange={(event) => { stopSpeaking(); setVoiceLanguage(event.target.value as 'bn-BD' | 'en-US'); }}>
