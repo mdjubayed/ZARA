@@ -110,13 +110,12 @@ async function loadEncryptedProviderKeys() {
   }
 
   const decrypted = await safeStorage.decryptStringAsync(encrypted);
-  const parsed = JSON.parse(decrypted.result);
+  const parsed = JSON.parse(decrypted);
   const keys = {
     omniroute: typeof parsed.omniroute === 'string' ? parsed.omniroute : '',
     freellmapi: typeof parsed.freellmapi === 'string' ? parsed.freellmapi : '',
   };
 
-  if (decrypted.shouldReEncrypt) await writeEncryptedProviderKeys(keys);
   return keys;
 }
 
