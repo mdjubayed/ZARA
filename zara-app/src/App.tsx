@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity, ArrowRight, AudioLines, Bot, ChevronDown,
   Code2, Folder, Globe, Grid2X2, Heart, Home, Info, Keyboard, Mic,
@@ -12,6 +12,14 @@ type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' |
 type ProviderId = 'omniroute' | 'freellmapi';
 type Provider = { id: ProviderId; name: string; status: string; enabled: number };
 type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; created_at?: string };
+
+interface BrowserSpeechRecognition extends EventTarget {
+  lang: string; interimResults: boolean; continuous: boolean;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null; start(): void; stop(): void;
+}
+type SpeechRecognitionWindow = Window & { SpeechRecognition?: new () => BrowserSpeechRecognition; webkitSpeechRecognition?: new () => BrowserSpeechRecognition };
 
 const API = '/api/v1';
 const navItems: Array<{ id: Tab; label: string; icon: typeof Home }> = [
@@ -46,6 +54,11 @@ export default function App() {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState('');
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceLanguage, setVoiceLanguage] = useState<'bn-BD' | 'en-US'>('bn-BD');
+  const [autoSpeak, setAutoSpeak] = useState(true);
+  const [voiceError, setVoiceError] = useState('');
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   const refreshProviders = useCallback(async () => {
     try {
@@ -89,8 +102,8 @@ export default function App() {
     }
   }, []);
 
-  const sendMessage = useCallback(async () => {
-    const content = input.trim();
+  const sendMessage = useCallback(async (messageText?: string, speakResponse = false) => {
+    const content = (messageText ?? input).trim();
     if (!content || busy || !threadId) return;
     const clientMessageId = crypto.randomUUID();
     const userMessage: Message = { id: clientMessageId, role: 'user', content };
@@ -98,7 +111,7 @@ export default function App() {
     setMessages((current) => [...current, userMessage, { id: assistantId, role: 'assistant', content: '' }]);
     setInput('');
     setBusy(true);
-    setTab('chat');
+    if (!speakResponse) setTab('chat');
 
     try {
       const response = await fetch(`${API}/chat/stream`, {
@@ -114,6 +127,7 @@ export default function App() {
       const decoder = new TextDecoder();
       let buffer = '';
       let finished = false;
+      let finalAssistantMessage: Message | undefined;
       while (!finished) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -132,6 +146,7 @@ export default function App() {
             if (eventName === 'error') throw new Error(data.error || 'CHAT_REQUEST_FAILED');
             if (eventName === 'done') {
               if (data.assistantMessage) {
+                finalAssistantMessage = data.assistantMessage;
                 setMessages((current) => current.map((message) => message.id === assistantId ? data.assistantMessage! : message));
               }
               finished = true;
@@ -142,14 +157,31 @@ export default function App() {
       }
       if (!finished) throw new Error('STREAM_CLOSED_BEFORE_COMPLETION');
       refreshProviders();
+      if (speakResponse && autoSpeak && finalAssistantMessage?.content && 'speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(finalAssistantMessage.content);
+        utterance.lang = voiceLanguage;
+        window.speechSynthesis.speak(utterance);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'CHAT_REQUEST_FAILED';
       setMessages((current) => current.map((item) => item.id === assistantId ? { ...item, content: item.content ? `${item.content}\n\n[Connection interrupted: ${message}]` : `I couldn't complete that request: ${message}` } : item));
     } finally {
       setBusy(false);
     }
-  }, [busy, input, refreshProviders, selectedProvider, threadId]);
+  }, [autoSpeak, busy, input, refreshProviders, selectedProvider, threadId, voiceLanguage]);
 
+  const startVoiceRecognition = useCallback(() => {
+    const speechWindow = window as SpeechRecognitionWindow;
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) { setVoiceError('Voice input is not supported in this browser. Try the latest Chrome or Edge.'); return; }
+    setVoiceError(''); recognitionRef.current?.stop();
+    const recognition = new Recognition(); recognition.lang = voiceLanguage; recognition.interimResults = false; recognition.continuous = false;
+    recognition.onresult = (event) => { const transcript = Array.from(event.results).map((result) => result[0]?.transcript ?? '').join(' ').trim(); if (transcript) void sendMessage(transcript, true); };
+    recognition.onerror = (event) => { setVoiceError('Voice input error: ' + event.error); setVoiceListening(false); };
+    recognition.onend = () => setVoiceListening(false); recognitionRef.current = recognition; setVoiceListening(true); recognition.start();
+  }, [sendMessage, voiceLanguage]);
+  const stopVoiceRecognition = useCallback(() => { recognitionRef.current?.stop(); setVoiceListening(false); }, []);
   const verifyProvider = async (id: ProviderId) => {
     setToast(`Checking ${id} connection...`);
     try {
@@ -195,7 +227,7 @@ export default function App() {
         <header className="topbar">
           <div className="mobile-brand">ZARA <span>{pageTitle}</span></div>
           <div className={`online-pill ${online ? 'is-online' : 'is-offline'}`}><i />{online ? 'Online' : 'Offline'}<ChevronDown size={15} /></div>
-          <div className="top-actions"><button aria-label="Voice"><Mic /></button><button aria-label="Sound"><Volume2 /></button><button aria-label="Language"><Globe /></button><span className="window-dots">—　□　×</span></div>
+          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => setAutoSpeak((value) => !value)} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
         </header>
 
         {tab === 'home' && (
@@ -227,8 +259,28 @@ export default function App() {
           <section className="settings-page"><div className="section-title"><h1>AI Brain Settings</h1><p>Configure the two approved providers. API keys are read only from backend environment variables.</p></div><div className="provider-cards">{(['omniroute', 'freellmapi'] as ProviderId[]).map((id) => { const provider = providers.find((item) => item.id === id); return <article className="provider-card" key={id}><div className="provider-card-top"><div className={`provider-symbol ${id}`}>{id === 'omniroute' ? 'O' : 'F'}</div><div><h2>{id === 'omniroute' ? 'OmniRoute' : 'FreeLLMAPI'}</h2><p>{id === 'omniroute' ? 'Primary AI Brain' : 'Automatic Backup Brain'}</p></div><span className={`provider-status ${provider?.status === 'ready' ? 'ready' : ''}`}>{provider?.status ?? 'not checked'}</span></div><div className="provider-meta"><span>API Key: <b>Backend environment</b></span><span>Enabled: <b>{provider?.enabled ? 'Yes' : 'No'}</b></span></div><div className="provider-buttons"><button onClick={() => void verifyProvider(id)}>Verify Connection</button><button className="secondary-button" disabled={!provider || provider.status !== 'ready'} onClick={() => provider && void toggleProvider(provider)}>{provider?.enabled ? 'Disable' : 'Enable'}</button></div></article>; })}</div><div className="notice-card"><ShieldCheck /><div><strong>Secret protection</strong><p>Never paste API keys into ChatGPT, browser console, or SQLite. Configure <code>OMNIROUTE_API_KEY</code> and <code>FREELLMAPI_API_KEY</code> in your private server environment.</p></div></div></section>
         )}
 
-        {tab !== 'home' && tab !== 'chat' && tab !== 'settings' && (
-          <section className="coming-page"><div className="coming-icon">{tab === 'voice' ? <Mic /> : tab === 'memory' ? <Grid2X2 /> : tab === 'agents' ? <Bot /> : tab === 'tools' ? <Zap /> : tab === 'files' ? <Folder /> : <Info />}</div><h1>{pageTitle}</h1><p>{tab === 'voice' ? 'Voice controls will be connected after the chat brain is verified.' : 'This module is planned for a later integration phase. Its controls will be enabled only when the required service and permissions are ready.'}</p><button onClick={() => setTab('chat')}>Go to Chat <ArrowRight size={16} /></button></section>
+        {tab === 'voice' && (
+          <section className="coming-page">
+            <div className="coming-icon"><Mic /></div>
+            <h1>Talk with ZARA</h1>
+            <p>Speak in Bengali or English. Your voice is converted to text in this browser and sent to the selected ZARA Brain.</p>
+            <div className="provider-select">
+              <label htmlFor="voice-language">Language</label>
+              <select id="voice-language" value={voiceLanguage} onChange={(event) => setVoiceLanguage(event.target.value as 'bn-BD' | 'en-US')}>
+                <option value="bn-BD">বাংলা</option><option value="en-US">English</option>
+              </select>
+            </div>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '18px 0' }}>
+              <input type="checkbox" checked={autoSpeak} onChange={(event) => setAutoSpeak(event.target.checked)} /> Speak ZARA's replies aloud
+            </label>
+            <button onClick={voiceListening ? stopVoiceRecognition : startVoiceRecognition} disabled={busy}>{voiceListening ? 'Stop Listening' : 'Start Speaking'} <Mic size={17} /></button>
+            {voiceError && <p role="alert">{voiceError}</p>}
+            {voiceListening && <p>Listening… Speak now.</p>}
+            <button className="secondary-button" onClick={() => setTab('chat')}>Open Text Chat <ArrowRight size={16} /></button>
+          </section>
+        )}
+        {tab !== 'home' && tab !== 'chat' && tab !== 'settings' && tab !== 'voice' && (
+          <section className="coming-page"><div className="coming-icon">{tab === 'memory' ? <Grid2X2 /> : tab === 'agents' ? <Bot /> : tab === 'tools' ? <Zap /> : tab === 'files' ? <Folder /> : <Info />}</div><h1>{pageTitle}</h1><p>This module is planned for a later integration phase. Its controls will be enabled only when the required service and permissions are ready.</p><button onClick={() => setTab('chat')}>Go to Chat <ArrowRight size={16} /></button></section>
         )}
       </main>
       {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X size={16} /></button></div>}
