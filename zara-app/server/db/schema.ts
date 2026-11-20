@@ -1,4 +1,4 @@
-export const SCHEMA_SQL = \x60
+export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS threads (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL DEFAULT 'New Chat',
@@ -76,4 +76,4 @@ BEGIN
   INSERT INTO messages_fts(message_id, thread_id, content)
   VALUES (new.id, new.thread_id, new.content);
 END;
-\x60;
+`;
