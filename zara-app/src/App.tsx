@@ -10,6 +10,7 @@ import './App.css';
 import { getApiBase } from './lib/apiBase.js';
 import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
 import { isSafeWorkspaceDirectory, isSafeWorkspacePath, WORKSPACE_FILE_SIZE_LIMIT } from './lib/workspacePolicy.js';
+import { buildWebSearchUrl, validateWebPageUrl } from './lib/webNavigation.js';
 
 type Tab = 'home' | 'chat' | 'voice' | 'memory' | 'agents' | 'tools' | 'files' | 'settings' | 'about';
 type ProviderId = 'omniroute' | 'freellmapi';
@@ -90,6 +91,8 @@ export default function App() {
   const [agentTemplates, setAgentTemplates] = useState<AgentTemplate[]>([]);
   const [agentDraft, setAgentDraft] = useState({ name: '', description: '', prompt: '' });
   const [toolPrompt, setToolPrompt] = useState('');
+  const [browserQuery, setBrowserQuery] = useState('');
+  const [browserPageUrl, setBrowserPageUrl] = useState('');
   const [workspaceHandle, setWorkspaceHandle] = useState<WorkspaceDirectoryHandle | null>(null);
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFileItem[]>([]);
   const [selectedWorkspacePath, setSelectedWorkspacePath] = useState('');
@@ -497,6 +500,50 @@ export default function App() {
     }
   };
 
+  const openWebDestination = async (rawUrl: string) => {
+    const validation = validateWebPageUrl(rawUrl);
+    if (!validation.ok) {
+      setToast(validation.error);
+      return;
+    }
+    if (!window.confirm('Open this website in your external browser? ZARA will not access your private files or sign in to the website.')) return;
+    const desktop = window.zaraDesktop;
+    if (desktop?.isDesktop) {
+      try {
+        const result = await desktop.openExternal(validation.url);
+        setToast(result.ok ? 'Website opened in your default browser.' : result.error === 'CANCELLED' ? 'Action cancelled.' : 'Could not open this website.');
+      } catch {
+        setToast('Could not open this website.');
+      }
+      return;
+    }
+    const opened = window.open(validation.url, '_blank', 'noopener,noreferrer');
+    if (!opened) setToast('The browser blocked the new tab. Allow pop-ups for ZARA and try again.');
+  };
+
+  const searchWeb = () => {
+    const query = browserQuery.trim();
+    if (!query) {
+      setToast('Enter a search topic first.');
+      return;
+    }
+    if (query.length > 300) {
+      setToast('Search text must be 300 characters or fewer.');
+      return;
+    }
+    const searchUrl = buildWebSearchUrl(query);
+    if (!window.confirm('Search the public web using DuckDuckGo Safe Search? Your search terms will be sent to that search service.')) return;
+    const desktop = window.zaraDesktop;
+    if (desktop?.isDesktop) {
+      void desktop.openExternal(searchUrl).then((result) => {
+        setToast(result.ok ? 'Search opened in your default browser.' : result.error === 'CANCELLED' ? 'Search cancelled.' : 'Could not open web search.');
+      }).catch(() => setToast('Could not open web search.'));
+      return;
+    }
+    const opened = window.open(searchUrl, '_blank', 'noopener,noreferrer');
+    if (!opened) setToast('The browser blocked the new tab. Allow pop-ups for ZARA and try again.');
+  };
+
   const runToolPrompt = (prompt: string) => {
     setInput(prompt);
     setTab('chat');
@@ -816,6 +863,18 @@ export default function App() {
                 ['Coding Helper', 'Help me understand, write, and review code. Explain changes before suggesting them.'],
                 ['Research Planner', 'Help me plan research and identify reliable sources to consult.']
               ].map(([name, prompt]) => <article className="tool-card" key={name}><h3>{name}</h3><p>{prompt}</p><button onClick={() => runToolPrompt(prompt)}>Use Tool</button></article>)}
+            </div>
+            <div className="web-browser-panel">
+              <div className="web-browser-heading"><Globe size={20} /><div><h2>Web Search & Reader</h2><p>Search the public web or open a website to read in your browser.</p></div></div>
+              <form className="web-browser-form" onSubmit={(event) => { event.preventDefault(); searchWeb(); }}>
+                <label htmlFor="zara-web-search">Search the web</label>
+                <div><input id="zara-web-search" value={browserQuery} maxLength={300} onChange={(event) => setBrowserQuery(event.target.value)} placeholder="বাংলা বা English-এ কিছু খুঁজুন…" /><button type="submit" disabled={!browserQuery.trim()}><Search size={16} /> Search</button></div>
+              </form>
+              <form className="web-browser-form" onSubmit={(event) => { event.preventDefault(); void openWebDestination(browserPageUrl); }}>
+                <label htmlFor="zara-web-reader-url">Read a website</label>
+                <div><input id="zara-web-reader-url" type="url" value={browserPageUrl} onChange={(event) => setBrowserPageUrl(event.target.value)} placeholder="https://example.com/article" /><button type="submit" disabled={!browserPageUrl.trim()}><Globe size={16} /> Open & Read</button></div>
+              </form>
+              <p className="web-browser-safety">Privacy & safety: search opens DuckDuckGo with Safe Search enabled. Websites open only after confirmation, in your external browser. ZARA does not fetch page contents, log in, download files, or execute website code. To ask ZARA to explain a page, copy the relevant text and paste it into Chat.</p>
             </div>
             {window.zaraDesktop?.isDesktop && <div className="desktop-actions"><h2>Windows Desktop Actions</h2><p>These actions run only after you confirm them. ZARA can open these approved apps; it cannot close or control other programs.</p><div className="desktop-action-buttons"><button onClick={() => void runDesktopApp('notepad', 'Notepad')}>Open Notepad</button><button onClick={() => void runDesktopApp('calculator', 'Calculator')}>Open Calculator</button><button onClick={() => void openDesktopBrowser()}>Open Browser</button></div></div>}
             <div className="tool-custom"><label htmlFor="custom-tool-prompt">Custom instruction</label><textarea id="custom-tool-prompt" rows={3} value={toolPrompt} onChange={(event) => setToolPrompt(event.target.value)} placeholder="Describe what you want ZARA to help with…" /><button onClick={() => runToolPrompt(toolPrompt)} disabled={!toolPrompt.trim()}>Send to Chat</button></div>
