@@ -110,6 +110,10 @@ See [SECURITY.md](./SECURITY.md) for the current trust boundary, local deploymen
 - Browser-based workspace access after the user explicitly chooses a folder: list up to 200 files across three folder levels, open supported text/source files up to 500 KB, and save edits only after confirmation. No file deletion or command execution.
 - Conversation rename and deletion, with a confirmation step before deletion.
 
+## Windows desktop app
+
+The repository now includes an Electron desktop shell and a manual GitHub Actions workflow for creating a Windows x64 installer. Follow [DESKTOP.md](./DESKTOP.md). The package lock must be refreshed with `npm install` after pulling the new desktop dependencies. No installer artifact is claimed until the workflow successfully builds it.
+
 ## Installing the web app
 
 Deploy the frontend over HTTPS, open ZARA in a compatible browser, and use the browser's **Install app** option (Chrome/Edge desktop or Android Chrome). The app shell can load from cache after a visit, but chat, saved data, and provider calls still require the backend and provider services to be reachable.
@@ -118,6 +122,6 @@ Deploy the frontend over HTTPS, open ZARA in a compatible browser, and use the b
 
 - Browser voice recognition availability and language quality depend on the browser and operating system. Speech recognition may require browser permission and an internet connection; the browser provider may process voice input through its own online service.
 - File access is limited to a user-selected folder through the browser File System Access API. Only supported text/source files are opened, edits require confirmation, and file deletion or shell execution is not available. Browser support requires a secure context and a compatible browser.
-- Desktop application control, arbitrary file modification, background autonomous agents, external browser automation, advanced long-term semantic memory, and Windows/Android packaging are not implemented in this web build.
+- A Windows Electron desktop packaging foundation is included. See [DESKTOP.md](./DESKTOP.md). The NSIS installer has not yet been built or verified. Native Windows automation, arbitrary file modification, background autonomous agents, external browser automation, advanced long-term semantic memory, and Android APK packaging are not implemented.
 - Provider API calls cannot be verified until valid credentials and reachable provider services are configured privately. The UI must keep provider key and model fields blank by default.
 - Do not describe a planned feature as complete until it has actually been implemented and verified.
