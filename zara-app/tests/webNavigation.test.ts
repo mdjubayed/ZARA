@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildWebSearchUrl, validateWebPageUrl } from '../src/lib/webNavigation.js';
+import { buildWebSearchUrl, isAllowedWebSearchQuery, validateWebPageUrl } from '../src/lib/webNavigation.js';
 
 test('builds a DuckDuckGo search URL with Safe Search enabled', () => {
   const result = new URL(buildWebSearchUrl('বাংলা গল্প'));
@@ -12,6 +12,12 @@ test('builds a DuckDuckGo search URL with Safe Search enabled', () => {
 test('rejects blank and overlong search queries', () => {
   assert.throws(() => buildWebSearchUrl('   '), /INVALID_WEB_SEARCH_QUERY/);
   assert.throws(() => buildWebSearchUrl('x'.repeat(301)), /INVALID_WEB_SEARCH_QUERY/);
+});
+
+test('blocks unsafe or age-restricted search topics', () => {
+  assert.equal(isAllowedWebSearchQuery('ordinary science homework'), true);
+  assert.equal(isAllowedWebSearchQuery('how to gamble online'), false);
+  assert.equal(isAllowedWebSearchQuery('অস্ত্র সম্পর্কে তথ্য'), false);
 });
 
 test('accepts public HTTPS URLs and strips fragments', () => {
