@@ -37,11 +37,12 @@
 ## Workspace file access
 
 - The user must explicitly select a folder through the browser File System Access API.
-- ZARA lists a bounded number of files and reads supported text/source files only.
-- File saves overwrite only the selected file and require a confirmation prompt.
+- ZARA lists at most 200 supported text/source files across three folder levels and reads files up to 500 KB.
+- Hidden paths, common secret/credential filenames, dependency folders, and build outputs are excluded by a shared allowlist policy.
+- File saves overwrite only the selected file, enforce a 500 KB UTF-8 size limit, and require a confirmation prompt.
 - The web app does not offer file deletion, shell execution, or unrestricted filesystem access.
 - The Windows Electron renderer has no Node integration and uses a sandboxed, context-isolated preload bridge.
-- The preload bridge exposes only allowlisted Notepad/Calculator launch, validated HTTP(S) external links, and native text-file dialogs. File reads require a user-selected UTF-8 text/source file no larger than 500 KB. File writes use a user-selected Save As destination and a separate confirmation; allowed text extensions are enforced. Arbitrary path arguments, file deletion, and command execution are not exposed.
+- The preload bridge exposes only allowlisted Notepad/Calculator launch, validated HTTP(S) external links, and native text-file dialogs. File reads require a user-selected UTF-8 text/source file no larger than 500 KB; hidden and common secret/credential filenames are rejected. File writes use a user-selected Save As destination and a separate confirmation; allowed text extensions are enforced. Arbitrary path arguments, file deletion, and command execution are not exposed.
 
 ## Current security boundary
 
