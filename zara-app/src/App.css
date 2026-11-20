@@ -68,3 +68,10 @@
 
 
 .stop-button{width:40px;height:40px;display:grid;place-items:center;border:1px solid #b94b70;border-radius:12px;background:#6e1f48;color:#fff}
+
+
+.desktop-actions{margin:20px 0;padding:18px;border:1px solid rgba(100,113,255,.28);border-radius:14px;background:rgba(12,19,54,.7)}
+.desktop-actions h2{margin:0 0 7px;color:#f0f2ff;font-size:15px}
+.desktop-actions p{margin:0 0 13px;color:#9ba6cf;font-size:12px;line-height:1.6}
+.desktop-action-buttons{display:flex;flex-wrap:wrap;gap:9px}
+.desktop-action-buttons button{padding:10px 13px;border:1px solid #5553b6;border-radius:9px;background:#1b2054;color:#fff;font-size:12px}
