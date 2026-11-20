@@ -27,6 +27,8 @@
 - ZARA lists a bounded number of files and reads supported text/source files only.
 - File saves overwrite only the selected file and require a confirmation prompt.
 - The web app does not offer file deletion, shell execution, or unrestricted filesystem access.
+- The Windows Electron renderer has no Node integration and uses a sandboxed, context-isolated preload bridge.
+- The preload bridge exposes only an allowlist for opening Notepad/Calculator and opening validated HTTP(S) links in the system browser. Each UI action requires explicit confirmation; arbitrary command execution is not exposed.
 
 ## Current security boundary
 
