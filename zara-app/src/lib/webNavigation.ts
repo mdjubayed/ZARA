@@ -54,7 +54,7 @@ export function validateWebPageUrl(rawUrl: string): WebPageUrlValidation {
     return { ok: false, error: 'Credentials and nonstandard ports are not allowed in website addresses.' };
   }
 
-  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
   const isIpAddress = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) || hostname.includes(':');
   const isLocalName = hostname === 'localhost'
     || hostname.endsWith('.localhost')
