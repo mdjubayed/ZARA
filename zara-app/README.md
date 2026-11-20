@@ -108,7 +108,7 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 
 ## Remaining platform boundaries
 
-- Browser voice recognition availability and language quality depend on the browser and operating system. Speech recognition may require browser permission and an internet connection.
+- Browser voice recognition availability and language quality depend on the browser and operating system. Speech recognition may require browser permission and an internet connection; the browser provider may process voice input through its own online service.
 - File access is limited to a user-selected folder through the browser File System Access API. Only supported text/source files are opened, edits require confirmation, and file deletion or shell execution is not available. Browser support requires a secure context and a compatible browser.
 - Desktop application control, arbitrary file modification, background autonomous agents, external browser automation, advanced long-term semantic memory, and Windows/Android packaging are not implemented in this web build.
 - Provider API calls cannot be verified until valid credentials and reachable provider services are configured privately. The UI must keep provider key and model fields blank by default.
