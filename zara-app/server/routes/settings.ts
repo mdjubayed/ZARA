@@ -9,6 +9,18 @@ import {
 
 export const settingsRouter = Router();
 
+const SECRET_SETTING_KEY = /(api[_-]?key|secret|access[_-]?token|refresh[_-]?token|password|credential)/i;
+
+function isSecretSettingKey(key: string): boolean {
+  return SECRET_SETTING_KEY.test(key);
+}
+
+function getPublicSettings(): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(getAllSettings()).filter(([key]) => !isSecretSettingKey(key)),
+  );
+}
+
 const settingValueSchema = z.union([
   z.string(),
   z.number().finite(),
@@ -30,14 +42,15 @@ const updateMultipleSettingsSchema = z.record(
 // GET: All settings
 settingsRouter.get('/', (_req, res) => {
   return res.status(200).json({
-    settings: getAllSettings(),
+    settings: getPublicSettings(),
   });
 });
 
 // GET: Single setting
 settingsRouter.get('/:key', (req, res) => {
-  const settings = getAllSettings();
   const key = req.params.key;
+  if (isSecretSettingKey(key)) return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
+  const settings = getPublicSettings();
 
   if (!Object.prototype.hasOwnProperty.call(settings, key)) {
     return res.status(404).json({ error: 'SETTING_NOT_FOUND' });
@@ -53,6 +66,10 @@ settingsRouter.get('/:key', (req, res) => {
 
 // PATCH: Update one setting
 settingsRouter.patch('/:key', (req, res) => {
+  if (isSecretSettingKey(req.params.key)) {
+    return res.status(400).json({ error: 'SECRET_SETTINGS_NOT_ALLOWED_USE_SERVER_ENVIRONMENT' });
+  }
+
   const parsed = updateSettingSchema.safeParse(req.body ?? {});
 
   if (!parsed.success) {
@@ -80,6 +97,10 @@ settingsRouter.put('/', (req, res) => {
       error: 'INVALID_SETTINGS_DATA',
       details: parsed.error.flatten().fieldErrors,
     });
+  }
+
+  if (Object.keys(parsed.data).some(isSecretSettingKey)) {
+    return res.status(400).json({ error: 'SECRET_SETTINGS_NOT_ALLOWED_USE_SERVER_ENVIRONMENT' });
   }
 
   setMultipleSettings(parsed.data);
