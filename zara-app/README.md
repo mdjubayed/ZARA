@@ -89,6 +89,7 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 - Provider credentials must never be committed to Git or returned by API responses.
 - Application settings reject secret-like field names, including nested secret fields.
 - Do not expose the backend or provider ports to an untrusted network.
+- On database startup, unsupported legacy provider rows are removed, provider configuration blobs are cleared, and secret-like keys are scrubbed from legacy settings.
 - Configure production CORS origins explicitly.
 - File and desktop automation features must use explicit permissions and safe workspace boundaries when implemented.
 
@@ -97,10 +98,11 @@ Chat requests require a client-generated `clientMessageId`. The backend uses it 
 - Bengali and English browser voice input using the browser speech-recognition API when supported.
 - Browser speech synthesis for spoken replies to voice requests.
 - Conversation history with open, rename, delete, and full-text search.
-- User-managed persistent memory notes stored in the ZARA settings database.
+- User-managed persistent memory notes stored in the ZARA settings database and included as bounded context in later chats.
 - Reusable agent instruction templates. These prepare prompts only and do not run autonomous background actions.
 - Safe prompt tools for learning, writing, coding, and research planning.
 - Explicit text-file attachments in chat, read in the browser and limited to 500 KB per file.
+- Conversation rename and deletion, with a confirmation step before deletion.
 
 ## Remaining platform boundaries
 
