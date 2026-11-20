@@ -192,7 +192,7 @@ ipcMain.handle('zara:clear-provider-key', async (event, providerId) => {
 });
 
 const allowedTextExtensions = ['.txt', '.md', '.json', '.csv', '.ts', '.tsx', '.js', '.jsx', '.py', '.html', '.css', '.xml', '.log', '.yml', '.yaml', '.toml', '.sql'];
-const sensitiveFileName = /(^|[._-])(secret|secrets|credential|credentials|password|passwd|token|private|id_rsa|id_ed25519|keystore|wallet)([._-]|$)|^\\.env($|\\.)/i;
+const sensitiveFileName = /(^|[._-])(secret|secrets|credential|credentials|password|passwd|token|private|id_rsa|id_ed25519|keystore|wallet)([._-]|$)|^\.env($|\.)/i;
 
 ipcMain.handle('zara:open-text-file', async (event) => {
   if (!isTrustedRenderer(event)) return { ok: false, error: 'UNAUTHORIZED_CALLER' };
