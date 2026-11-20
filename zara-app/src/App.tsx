@@ -108,6 +108,12 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => () => {
+    recognitionRef.current?.stop();
+    activeChatController.current?.abort();
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  }, []);
+
   useEffect(() => {
     let active = true;
     api('/health').then(() => { if (active) setOnline(true); }).catch(() => { if (active) setOnline(false); });
@@ -404,7 +410,10 @@ export default function App() {
     const recognition = new Recognition(); recognition.lang = voiceLanguage; recognition.interimResults = false; recognition.continuous = false;
     recognition.onresult = (event) => { const transcript = Array.from(event.results).map((result) => result[0]?.transcript ?? '').join(' ').trim(); if (transcript) void sendMessage(transcript, true); };
     recognition.onerror = (event) => { setVoiceError('Voice input error: ' + event.error); setVoiceListening(false); };
-    recognition.onend = () => setVoiceListening(false); recognitionRef.current = recognition; setVoiceListening(true); recognition.start();
+    recognition.onend = () => { setVoiceListening(false); recognitionRef.current = null; };
+    recognitionRef.current = recognition;
+    setVoiceListening(true);
+    try { recognition.start(); } catch (error) { setVoiceListening(false); setVoiceError(error instanceof Error ? error.message : 'Could not start voice input.'); }
   }, [sendMessage, voiceLanguage]);
   const stopVoiceRecognition = useCallback(() => { recognitionRef.current?.stop(); setVoiceListening(false); }, []);
   const verifyProvider = async (id: ProviderId) => {
