@@ -212,9 +212,9 @@ if (!manifest.includes('android.speech.RecognitionService')) {
   declarations.push('<queries><intent><action android:name="android.speech.RecognitionService" /></intent></queries>');
 }
 if (declarations.length > 0) {
-  const openingTag = manifest.match(/<manifest\\b[^>]*>/)?.[0];
+  const openingTag = manifest.match(/<manifest\b[^>]*>/)?.[0];
   if (!openingTag) throw new Error('ANDROID_MANIFEST_INVALID');
-  manifest = manifest.replace(openingTag, openingTag + '\\n    ' + declarations.join('\\n    '));
+  manifest = manifest.replace(openingTag, openingTag + '\n    ' + declarations.join('\n    '));
   writeFileSync(manifestPath, manifest, 'utf8');
 }
 
