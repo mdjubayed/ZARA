@@ -6,6 +6,7 @@ import {
   ShieldCheck, Sparkles, Volume2, X, Zap,
 } from 'lucide-react';
 import heroImage from './assets/zara-hero.png';
+import HybridAvatar from './components/HybridAvatar.js';
 import './App.css';
 import { getApiBase } from './lib/apiBase.js';
 import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
@@ -108,6 +109,10 @@ export default function App() {
   const [voiceListening, setVoiceListening] = useState(false);
   const [voiceLanguage, setVoiceLanguage] = useState<'bn-BD' | 'en-US'>('bn-BD');
   const [autoSpeak, setAutoSpeak] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    try { return localStorage.getItem('zara.voiceEnabled') === 'true'; } catch { return false; }
+  });
+  const greetingAttemptedRef = useRef(false);
   const [voiceError, setVoiceError] = useState('');
   const [speechError, setSpeechError] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -238,6 +243,26 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   }, [voiceLanguage]);
 
+  const enableVoice = useCallback(() => {
+    setVoiceEnabled(true);
+    try { localStorage.setItem('zara.voiceEnabled', 'true'); } catch { /* Storage may be unavailable in private browsing. */ }
+    speakText(voiceLanguage === 'bn-BD'
+      ? 'হ্যালো! আমি জারা। আমি এখন কথা বলতে প্রস্তুত। কীভাবে সাহায্য করতে পারি?'
+      : 'Hello! I am ZARA. I am ready to talk. How can I help you today?');
+  }, [speakText, voiceLanguage]);
+
+  useEffect(() => {
+    if (!voiceEnabled || greetingAttemptedRef.current) return undefined;
+    const timer = window.setTimeout(() => {
+      if (greetingAttemptedRef.current) return;
+      greetingAttemptedRef.current = true;
+      speakText(voiceLanguage === 'bn-BD'
+        ? 'হ্যালো! আমি জারা। আবারও স্বাগতম। কীভাবে সাহায্য করতে পারি?'
+        : 'Hello! I am ZARA. Welcome back. How can I help you today?');
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [voiceEnabled, speakText, voiceLanguage]);
+
   const sendMessage = useCallback(async (messageText?: string, speakResponse = false) => {
     const content = (messageText ?? input).trim();
     if (!content || busy || !threadId) return;
@@ -299,7 +324,7 @@ export default function App() {
       if (!finished) throw new Error('STREAM_CLOSED_BEFORE_COMPLETION');
       refreshProviders();
       api<{ threads: Thread[] }>('/threads').then((result) => setThreads(result.threads)).catch(() => undefined);
-      if (speakResponse && autoSpeak && finalAssistantMessage?.content) {
+      if (autoSpeak && voiceEnabled && finalAssistantMessage?.content) {
         speakText(finalAssistantMessage.content);
       }
     } catch (error) {
@@ -313,7 +338,7 @@ export default function App() {
       if (activeChatController.current === controller) activeChatController.current = null;
       setBusy(false);
     }
-  }, [autoSpeak, busy, input, refreshProviders, selectedProvider, speakText, threadId]);
+  }, [autoSpeak, busy, input, refreshProviders, selectedProvider, speakText, threadId, voiceEnabled]);
 
   const openWorkspace = async () => {
     const pickerWindow = window as DirectoryPickerWindow;
@@ -802,15 +827,15 @@ export default function App() {
         <header className="topbar">
           <div className="mobile-brand">ZARA <span>{pageTitle}</span></div>
           <div className={`online-pill ${online ? 'is-online' : 'is-offline'}`}><i />{online ? 'Online' : 'Offline'}<ChevronDown size={15} /></div>
-          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => { setAutoSpeak((value) => !value); if (autoSpeak) stopSpeaking(); }} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
+          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => { if (autoSpeak) { setAutoSpeak(false); stopSpeaking(); } else { setAutoSpeak(true); if (!voiceEnabled) enableVoice(); } }} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
         </header>
 
         {tab === 'home' && (
           <section className="dashboard-grid">
             <div className="hero-stage">
               <div className="hero-glow" />
-              <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?</div>
-              <img className="hero-character" src={heroImage} alt="ZARA futuristic assistant" />
+              <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?{!voiceEnabled && <button className="voice-enable-button" onClick={enableVoice}><Volume2 size={15} /> Enable Voice &amp; Hear Greeting</button>}</div>
+              <HybridAvatar status={isSpeaking ? 'speaking' : voiceListening ? 'listening' : busy ? 'thinking' : 'idle'} />
               <div className="hero-brand"><b>Z</b><strong>ZARA</strong><small>Dream · Assist · Achieve</small></div>
               <div className="talk-dock"><div className="wave-icon"><AudioLines size={27} /></div><span>Tap to Talk</span><button className="mic-main" onClick={() => setTab('voice')} aria-label="Open voice assistant"><Mic size={39} /></button><button onClick={() => setTab('chat')} aria-label="Open chat"><Keyboard /></button><button onClick={() => setTab('voice')} aria-label="Open voice assistant"><Play /></button><button onClick={() => setTab('settings')} aria-label="Open settings"><Settings /></button></div>
             </div>
@@ -867,6 +892,7 @@ export default function App() {
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '18px 0' }}>
               <input type="checkbox" checked={autoSpeak} onChange={(event) => setAutoSpeak(event.target.checked)} /> Speak ZARA's replies aloud
             </label>
+            {!voiceEnabled && <button onClick={enableVoice}><Volume2 size={17} /> Enable Voice &amp; Hear Greeting</button>}
             <button onClick={voiceListening ? stopVoiceRecognition : startVoiceRecognition} disabled={busy}>{voiceListening ? 'Stop Listening' : 'Start Speaking'} <Mic size={17} /></button>
             {busy && <button onClick={() => activeChatController.current?.abort()}>Stop ZARA response <X size={17} /></button>}
             {voiceError && <p role="alert">{voiceError}</p>}
