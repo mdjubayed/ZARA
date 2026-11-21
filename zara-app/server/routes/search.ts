@@ -6,7 +6,7 @@ import { searchMessagesPaginated } from '../db/repositories/messageRepository.js
 const router = Router();
 
 const searchQuerySchema = z.object({
-  q: z.string().trim().min(1, 'Search query is required'),
+  q: z.string().trim().min(1, 'Search query is required').max(500),
   page: z.coerce.number().int().min(1).max(1000000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });

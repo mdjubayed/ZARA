@@ -5,11 +5,21 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build:server && tsc -b && vite build",
     "lint": "oxlint",
+    "test": "node --import tsx --test tests/*.test.ts",
     "preview": "vite preview",
     "server:dev": "tsx watch server/index.ts",
-    "server:start": "tsx server/index.ts"
+    "server:start": "tsx server/index.ts",
+    "build:server": "esbuild server/app.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist-server/app.cjs && esbuild server/index.ts --bundle --platform=node --format=cjs --packages=external --outfile=dist-server/index.cjs",
+    "desktop:dev": "electron . --dev",
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "desktop:dist": "npm run build && electron-builder --win nsis --x64",
+    "mobile:sync": "npm run build:mobile && npm run mobile:prepare && cap sync android",
+    "mobile:open": "cap open android",
+    "build:mobile": "npm run build:server && tsc -b && vite build --mode mobile",
+    "start:prod": "node dist-server/index.cjs",
+    "mobile:prepare": "node scripts/prepare-android.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.2.0",
@@ -20,7 +30,9 @@
     "lucide-react": "^1.75.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "zod": "^4.6.7"
+    "zod": "^4.6.7",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/android": "^8.6.2"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
@@ -33,10 +45,53 @@
     "oxlint": "^1.90.0",
     "tsx": "^4.23.15",
     "typescript": "~7.0.2",
-    "vite": "^8.3.6"
+    "vite": "^8.3.6",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.17.0",
+    "esbuild": "^0.28.2",
+    "@capacitor/cli": "^8.6.2"
   },
   "allowScripts": {
     "better-sqlite3@13.2.0": true,
-    "esbuild@0.28.2": true
+    "esbuild@0.28.2": true,
+    "electron@45.4.1": true,
+    "electron-builder@26.17.0": true
+  },
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.zara.assistant",
+    "productName": "ZARA AI",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-server/**/*",
+      "electron/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "artifactName": "${productName}-${version}-${arch}.${ext}"
   }
 }

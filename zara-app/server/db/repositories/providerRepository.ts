@@ -1,4 +1,6 @@
 import { getDatabase } from '../database.js';
+import { hasProviderApiKey } from '../../services/secretStore.js';
+import { getProviderModel } from '../../services/providerConfig.js';
 
 export type ProviderStatus =
   | 'unconfigured'
@@ -19,8 +21,8 @@ export interface Provider {
 }
 
 const DEFAULT_PROVIDERS = [
-  { id: 'omniroute', name: 'OmniRoute', status: 'pending_verification' },
-  { id: 'freellmapi', name: 'FreeLLMAPI', status: 'pending_verification' },
+  { id: 'omniroute', name: 'OmniRoute', status: 'unconfigured' },
+  { id: 'freellmapi', name: 'FreeLLMAPI', status: 'unconfigured' },
 ] as const;
 
 export function isSupportedProviderId(id: string): id is SupportedProviderId {
@@ -43,7 +45,22 @@ export function initializeProviders(): void {
 
 export function getAllProviders(): Provider[] {
   initializeProviders();
-  return getDatabase()
+  const db = getDatabase();
+  const syncConfiguration = db.prepare(`
+    UPDATE providers
+    SET status = ?, enabled = 0, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `);
+  for (const id of ['omniroute', 'freellmapi'] as const) {
+    const status = !hasProviderApiKey(id)
+      ? 'unconfigured'
+      : !getProviderModel(id)
+        ? 'pending_verification'
+        : undefined;
+
+    if (status) syncConfiguration.run(status, id);
+  }
+  return db
     .prepare("SELECT * FROM providers WHERE id IN ('omniroute', 'freellmapi') ORDER BY CASE id WHEN 'omniroute' THEN 0 ELSE 1 END")
     .all() as Provider[];
 }
@@ -76,10 +93,10 @@ export function setProviderStatus(
   getDatabase().prepare(`
     UPDATE providers
     SET status = ?,
-        enabled = CASE WHEN ? = 'disabled' THEN 0 ELSE enabled END,
+        enabled = 0,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
-  `).run(status, status, id);
+  `).run(status, id);
   return getProviderById(id);
 }
 
