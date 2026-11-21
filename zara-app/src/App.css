@@ -107,3 +107,25 @@
 .web-browser-form textarea{width:100%;min-height:100px;resize:vertical;padding:11px 13px;border:1px solid #4848a5;border-radius:10px;background:#080e2b;color:#fff;font-size:12px;line-height:1.6}
 .web-browser-form>button{align-self:flex-start;display:flex;align-items:center;gap:7px;padding:9px 13px;border:1px solid #6255ed;border-radius:9px;background:linear-gradient(110deg,#6127db,#1837a8);color:#fff;font-size:11px}
 .web-browser-form>button:disabled{opacity:.4;cursor:not-allowed}
+
+
+/* Procedural WebGL hybrid avatar: realistic metallic depth, animated status and voice lip-sync. */
+.hybrid-avatar{position:absolute;z-index:0;left:50%;bottom:48px;transform:translateX(-50%);width:min(76%,590px);height:88%;min-height:380px;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.hybrid-avatar canvas{position:relative;z-index:1;width:100%;height:100%;display:block;filter:drop-shadow(0 0 24px rgba(48,132,255,.38))}
+.hybrid-avatar-aura{position:absolute;z-index:0;left:12%;right:12%;top:18%;bottom:7%;border-radius:50%;background:radial-gradient(ellipse,rgba(36,114,255,.22),rgba(67,48,191,.12) 44%,transparent 72%);filter:blur(22px);animation:zara-avatar-aura 4s ease-in-out infinite}
+.hybrid-avatar-ring{position:absolute;z-index:0;width:66%;aspect-ratio:1;border:1px solid rgba(60,154,255,.24);border-radius:50%;box-shadow:0 0 25px rgba(24,117,255,.2),inset 0 0 22px rgba(62,95,255,.12);animation:zara-avatar-orbit 22s linear infinite}
+.hybrid-avatar-ring:before,.hybrid-avatar-ring:after{content:"";position:absolute;inset:8%;border:1px dashed rgba(119,113,255,.42);border-radius:50%}
+.hybrid-avatar-ring:after{inset:-8%;border-color:rgba(36,211,238,.2);transform:rotateX(68deg)}
+.hybrid-avatar-ring.listening{border-color:rgba(34,211,238,.75);box-shadow:0 0 38px rgba(34,211,238,.4)}
+.hybrid-avatar-ring.thinking{border-color:rgba(167,139,250,.75);animation-duration:8s}
+.hybrid-avatar-ring.speaking{border-color:rgba(103,232,249,.8);box-shadow:0 0 45px rgba(34,211,238,.5);animation-duration:5s}
+.hybrid-avatar-state{position:absolute;z-index:2;bottom:5px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;padding:7px 13px;border:1px solid rgba(82,151,255,.4);border-radius:30px;background:rgba(5,12,38,.82);color:#9db9ff;font-size:9px;letter-spacing:2px;white-space:nowrap;box-shadow:0 0 16px rgba(31,103,255,.2)}
+.hybrid-avatar-state i{width:7px;height:7px;border-radius:50%;background:#8b5cf6;box-shadow:0 0 9px currentColor}
+.hybrid-avatar-state.listening i{background:#22d3ee}
+.hybrid-avatar-state.thinking i{background:#a78bfa}
+.hybrid-avatar-state.speaking i{background:#67e8f9;animation:zara-avatar-pulse .45s ease-in-out infinite alternate}
+.voice-enable-button{display:flex;align-items:center;gap:7px;margin-top:9px;padding:7px 10px;border:1px solid rgba(72,181,255,.65);border-radius:9px;background:linear-gradient(110deg,rgba(35,91,191,.8),rgba(84,47,181,.8));color:#fff;font-size:11px;cursor:pointer}
+@keyframes zara-avatar-orbit{to{transform:rotate(360deg)}}
+@keyframes zara-avatar-aura{50%{opacity:.65;transform:scale(1.08)}}
+@keyframes zara-avatar-pulse{to{opacity:.35;transform:scale(.75)}}
+@media(max-width:600px){.hybrid-avatar{width:100%;height:83%;bottom:43px;min-height:350px}.hybrid-avatar-ring{width:75%}.voice-enable-button{font-size:10px;padding:6px 8px}}
