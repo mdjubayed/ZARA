@@ -181,7 +181,7 @@ export default function App() {
 
   const startNewChat = useCallback(async () => {
     try {
-      const result = await api<{ thread: { id: string } }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
+      const result = await api<{ thread: Thread }>('/threads', { method: 'POST', body: JSON.stringify({ title: 'New Chat' }) });
       setThreadId(result.thread.id);
       setThreads((current) => [result.thread, ...current]);
       setMessages([]);
