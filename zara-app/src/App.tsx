@@ -223,7 +223,11 @@ export default function App() {
     const matchingVoice = voices.find((voice) => voice.lang.toLowerCase() === voiceLanguage.toLowerCase())
       ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
     if (matchingVoice) utterance.voice = matchingVoice;
-    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onstart = () => {
+      setIsSpeaking(true);
+      setVoiceEnabled(true);
+      try { localStorage.setItem('zara.voiceEnabled', 'true'); } catch { /* Storage may be unavailable. */ }
+    };
     utterance.onend = () => {
       if (utteranceRef.current === utterance) {
         utteranceRef.current = null;
@@ -235,7 +239,13 @@ export default function App() {
         utteranceRef.current = null;
         setIsSpeaking(false);
         if (event.error !== 'canceled' && event.error !== 'interrupted') {
-          setSpeechError('Browser could not speak this reply. Check available speech voices and audio settings.');
+          setSpeechError(event.error === 'not-allowed'
+            ? 'Your browser blocked automatic audio. Tap Enable Voice once to allow ZARA to speak.'
+            : 'Browser could not speak this reply. Check available speech voices and audio settings.');
+          if (event.error === 'not-allowed') {
+            setVoiceEnabled(false);
+            try { localStorage.removeItem('zara.voiceEnabled'); } catch { /* Storage may be unavailable. */ }
+          }
         }
       }
     };
@@ -252,7 +262,7 @@ export default function App() {
   }, [speakText, voiceLanguage]);
 
   useEffect(() => {
-    if (!voiceEnabled || greetingAttemptedRef.current) return undefined;
+    if (greetingAttemptedRef.current) return undefined;
     const timer = window.setTimeout(() => {
       if (greetingAttemptedRef.current) return;
       greetingAttemptedRef.current = true;
@@ -261,7 +271,7 @@ export default function App() {
         : 'Hello! I am ZARA. Welcome back. How can I help you today?');
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [voiceEnabled, speakText, voiceLanguage]);
+  }, [speakText, voiceLanguage]);
 
   const sendMessage = useCallback(async (messageText?: string, speakResponse = false) => {
     const content = (messageText ?? input).trim();
@@ -834,7 +844,7 @@ export default function App() {
           <section className="dashboard-grid">
             <div className="hero-stage">
               <div className="hero-glow" />
-              <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?{!voiceEnabled && <button className="voice-enable-button" onClick={enableVoice}><Volume2 size={15} /> Enable Voice &amp; Hear Greeting</button>}</div>
+              <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?{(!voiceEnabled || speechError) && <button className="voice-enable-button" onClick={enableVoice}><Volume2 size={15} /> Enable Voice &amp; Hear Greeting</button>}</div>
               <HybridAvatar status={isSpeaking ? 'speaking' : voiceListening ? 'listening' : busy ? 'thinking' : 'idle'} />
               <div className="hero-brand"><b>Z</b><strong>ZARA</strong><small>Dream · Assist · Achieve</small></div>
               <div className="talk-dock"><div className="wave-icon"><AudioLines size={27} /></div><span>Tap to Talk</span><button className="mic-main" onClick={() => setTab('voice')} aria-label="Open voice assistant"><Mic size={39} /></button><button onClick={() => setTab('chat')} aria-label="Open chat"><Keyboard /></button><button onClick={() => setTab('voice')} aria-label="Open voice assistant"><Play /></button><button onClick={() => setTab('settings')} aria-label="Open settings"><Settings /></button></div>
@@ -892,7 +902,7 @@ export default function App() {
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '18px 0' }}>
               <input type="checkbox" checked={autoSpeak} onChange={(event) => setAutoSpeak(event.target.checked)} /> Speak ZARA's replies aloud
             </label>
-            {!voiceEnabled && <button onClick={enableVoice}><Volume2 size={17} /> Enable Voice &amp; Hear Greeting</button>}
+            {(!voiceEnabled || speechError) && <button onClick={enableVoice}><Volume2 size={17} /> Enable Voice &amp; Hear Greeting</button>}
             <button onClick={voiceListening ? stopVoiceRecognition : startVoiceRecognition} disabled={busy}>{voiceListening ? 'Stop Listening' : 'Start Speaking'} <Mic size={17} /></button>
             {busy && <button onClick={() => activeChatController.current?.abort()}>Stop ZARA response <X size={17} /></button>}
             {voiceError && <p role="alert">{voiceError}</p>}
