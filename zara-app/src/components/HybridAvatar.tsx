@@ -32,7 +32,7 @@ function createSphere(): Mesh {
     for (let column = 0; column < columns; column += 1) {
       const a = row * (columns + 1) + column;
       const b = a + columns + 1;
-      indices.push(a, b, a + 1, b, b + 1, a + 1);
+      indices.push(a, a + 1, b, b, a + 1, b + 1);
     }
   }
 
