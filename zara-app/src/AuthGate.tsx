@@ -20,7 +20,8 @@ async function requestAuth(path: string, password?: string): Promise<AuthRespons
 }
 
 export default function AuthGate({ children }: { children: ReactNode }) {
-  const [loading, setLoading] = useState(true);
+  const needsServerUrl = isMobileBuild() && !getApiBase();
+  const [loading, setLoading] = useState(!needsServerUrl);
   const [setupRequired, setSetupRequired] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
@@ -30,20 +31,13 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [serverUrlDraft, setServerUrlDraft] = useState('');
 
   useEffect(() => {
-    if (isMobileBuild() && !getApiBase()) {
-      setLoading(false);
-      return;
-    }
     const onUnauthorized = () => setAuthenticated(false);
     window.addEventListener('zara:unauthorized', onUnauthorized);
     return () => window.removeEventListener('zara:unauthorized', onUnauthorized);
   }, []);
 
   useEffect(() => {
-    if (isMobileBuild() && !getApiBase()) {
-      setLoading(false);
-      return;
-    }
+    if (needsServerUrl) return;
     let active = true;
     void requestAuth('status').then(async (status) => {
       if (!active) return;
@@ -58,7 +52,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
       if (active) setError('ZARA server is unavailable. Please refresh after the server starts.');
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, []);
+  }, [needsServerUrl]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
