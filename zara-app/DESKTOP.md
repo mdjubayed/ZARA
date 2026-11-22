@@ -30,7 +30,7 @@ The NSIS installer is written to `release/`. The backend is bundled separately f
 
 ## GitHub Actions build
 
-Open the repository's Actions tab, choose **Build ZARA Windows Installer**, and run the workflow manually. After a successful build, the workflow publishes a GitHub Release containing the Windows x64 `.exe` installer. The installer is then available from the repository's **Releases** page.
+Every push to `phase2-blank-api-secure-config` runs lint, automated tests, and a Windows installer build; the `.exe` is uploaded as a 14-day Actions artifact. To publish a downloadable GitHub Release, open Actions → **Build ZARA Windows Installer**, choose **Run workflow**, select the `phase2-blank-api-secure-config` branch, and run it. After a successful build, the workflow publishes the installer to the repository's **Releases** page.
 
 ## Security model
 
