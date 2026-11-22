@@ -8,6 +8,8 @@ const net = require('node:net');
 const path = require('node:path');
 
 const isDevelopment = !app.isPackaged;
+// Allow the installed desktop assistant to play its welcome greeting on startup.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 let mainWindow = null;
 let apiServer = null;
 let localOrigin = '';
