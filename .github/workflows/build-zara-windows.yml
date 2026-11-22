@@ -57,4 +57,4 @@ jobs:
           $installer = Get-ChildItem -Path "zara-app/release" -Filter "*.exe" | Select-Object -First 1
           if (-not $installer) { throw "Windows installer was not produced." }
           $tag = "v0.1.${{ github.run_number }}"
-          gh release create $tag $installer.FullName --title "ZARA AI $tag" --notes "ZARA AI Windows x64 installer. Download the .exe asset and run it on Windows 10/11."
+          gh release create $tag $installer.FullName --target ${{ github.sha }} --title "ZARA AI $tag" --notes "ZARA AI Windows x64 installer. Download the .exe asset and run it on Windows 10/11."
