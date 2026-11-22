@@ -216,12 +216,14 @@ export default function App() {
     setSpeechError('');
     const utterance = new SpeechSynthesisUtterance(content);
     utterance.lang = voiceLanguage;
-    utterance.rate = 1;
-    utterance.pitch = 1;
+    utterance.rate = 0.96;
+    utterance.pitch = 1.12;
     const voices = window.speechSynthesis.getVoices();
     const languagePrefix = voiceLanguage.split('-')[0].toLowerCase();
-    const matchingVoice = voices.find((voice) => voice.lang.toLowerCase() === voiceLanguage.toLowerCase())
-      ?? voices.find((voice) => voice.lang.toLowerCase().startsWith(languagePrefix));
+    const languageVoices = voices.filter((voice) => voice.lang.toLowerCase() === voiceLanguage.toLowerCase()
+      || voice.lang.toLowerCase().startsWith(languagePrefix));
+    const feminineVoice = languageVoices.find((voice) => /female|woman|samantha|victoria|zira|aria|jenny|ava|susan|karen|siri/i.test(voice.name));
+    const matchingVoice = feminineVoice ?? languageVoices[0];
     if (matchingVoice) utterance.voice = matchingVoice;
     utterance.onstart = () => {
       setIsSpeaking(true);
@@ -244,6 +246,7 @@ export default function App() {
             : 'Browser could not speak this reply. Check available speech voices and audio settings.');
           if (event.error === 'not-allowed') {
             setVoiceEnabled(false);
+            greetingAttemptedRef.current = false;
             try { localStorage.removeItem('zara.voiceEnabled'); } catch { /* Storage may be unavailable. */ }
           }
         }
