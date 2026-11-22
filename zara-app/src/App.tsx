@@ -5,8 +5,7 @@ import {
   MessageCircle, MessageSquare, Paperclip, Play, Search, Send, Settings,
   ShieldCheck, Sparkles, Volume2, X, Zap,
 } from 'lucide-react';
-import heroImage from './assets/zara-hero.png';
-import SketchfabAvatar from './components/SketchfabAvatar.js';
+import ShadowAvatar from './components/ShadowAvatar.js';
 import './App.css';
 import { getApiBase } from './lib/apiBase.js';
 import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
@@ -82,6 +81,10 @@ export default function App() {
   const [providerKeyDrafts, setProviderKeyDrafts] = useState<Record<ProviderId, string>>({ omniroute: '', freellmapi: '' });
   const [providerKeyStored, setProviderKeyStored] = useState<Record<ProviderId, boolean>>({ omniroute: false, freellmapi: false });
   const [secureKeyStorageAvailable, setSecureKeyStorageAvailable] = useState(false);
+  const [setupRequired, setSetupRequired] = useState(false);
+  const [setupKeyDraft, setSetupKeyDraft] = useState('');
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState('');
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>('omniroute');
   const [threadId, setThreadId] = useState('');
   const [threads, setThreads] = useState<Thread[]>([]);
@@ -148,6 +151,7 @@ export default function App() {
       if (!active) return;
       setSecureKeyStorageAvailable(status.available);
       setProviderKeyStored({ omniroute: status.omniroute, freellmapi: status.freellmapi });
+      setSetupRequired(!status.omniroute);
     }).catch(() => {
       if (active) setSecureKeyStorageAvailable(false);
     });
@@ -790,6 +794,42 @@ export default function App() {
     }
   };
 
+  const completeFirstRunSetup = async () => {
+    const key = setupKeyDraft.trim();
+    const desktop = window.zaraDesktop;
+    if (!key || !desktop || !secureKeyStorageAvailable || setupBusy) return;
+    setSetupBusy(true);
+    setSetupError('');
+    try {
+      const saved = await desktop.saveProviderKey('omniroute', key);
+      if (!saved.ok) {
+        setSetupError(saved.error === 'CANCELLED' ? 'Key save was cancelled.' : 'Secure key storage is unavailable. No key was saved.');
+        return;
+      }
+      setSetupKeyDraft('');
+      setProviderKeyStored((current) => ({ ...current, omniroute: true }));
+      try {
+        const result = await api<{ models: string[]; requiresModelSelection?: boolean }>('/providers/omniroute/verify', { method: 'POST' });
+        setProviderModels((current) => ({ ...current, omniroute: result.models ?? [] }));
+        await refreshProviders();
+        setSetupRequired(false);
+        setTab('settings');
+        setToast(result.requiresModelSelection
+          ? 'OmniRoute key saved securely. Select a compatible model in Brain Settings to finish setup.'
+          : 'OmniRoute key saved and verified. Review Brain Settings to enable it.');
+      } catch (error) {
+        await refreshProviders();
+        setSetupRequired(false);
+        setTab('settings');
+        setToast('API key was saved securely, but verification did not complete: ' + (error instanceof Error ? error.message : 'PROVIDER_VERIFICATION_FAILED'));
+      }
+    } catch {
+      setSetupError('Could not save the API key securely. No key was saved.');
+    } finally {
+      setSetupBusy(false);
+    }
+  };
+
   const clearProviderKey = async (id: ProviderId) => {
     const desktop = window.zaraDesktop;
     if (!desktop || !secureKeyStorageAvailable) return;
@@ -850,7 +890,7 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-love"><Heart size={20} fill="currentColor" /> <span>Always with you</span></div>
-        <div className="profile-card"><div className="profile-avatar"><img src={heroImage} alt="ZARA assistant avatar" /></div><div><strong>ZARA <ShieldCheck size={15} /></strong><small><i /> Ready to Assist</small></div><ArrowRight className="profile-arrow" size={20} /></div>
+        <div className="profile-card"><div className="profile-avatar"><ShadowAvatar compact /></div><div><strong>ZARA <ShieldCheck size={15} /></strong><small><i /> Ready to Assist</small></div><ArrowRight className="profile-arrow" size={20} /></div>
       </aside>
 
       <main className="main-area">
@@ -864,7 +904,7 @@ export default function App() {
           <section className="dashboard-grid">
             <div className="hero-stage">
               <div className="hero-glow" />
-              <SketchfabAvatar />
+              <ShadowAvatar state={isSpeaking ? 'speaking' : voiceListening ? 'listening' : busy ? 'thinking' : 'idle'} />
               <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?{speechError && !window.zaraDesktop?.isDesktop && <p className="voice-autoplay-note" role="status">{speechError} Tap anywhere once to start ZARA's voice.</p>}</div>
               <div className="hero-brand"><b>Z</b><strong>ZARA</strong><small>Dream · Assist · Achieve</small></div>
               <div className="talk-dock"><div className="wave-icon"><AudioLines size={27} /></div><span>Tap to Talk</span><button className="mic-main" onClick={() => setTab('voice')} aria-label="Open voice assistant"><Mic size={39} /></button><button onClick={() => setTab('chat')} aria-label="Open chat"><Keyboard /></button><button onClick={() => setTab('voice')} aria-label="Open voice assistant"><Play /></button><button onClick={() => setTab('settings')} aria-label="Open settings"><Settings /></button></div>
@@ -1013,9 +1053,25 @@ export default function App() {
           <section className="coming-page"><div className="coming-icon"><Info /></div><h1>About ZARA</h1><p>ZARA is one bilingual assistant with one Brain Manager. OmniRoute is primary and FreeLLMAPI is the automatic backup. Provider credentials remain private on the backend.</p><button onClick={() => setTab('settings')}>Brain Settings <ArrowRight size={16} /></button></section>
         )}
       </main>
-      {tab !== 'home' && <div className="global-assistant-avatar" aria-label="ZARA 3D assistant">
-        <SketchfabAvatar />
+      {tab !== 'home' && <div className="global-assistant-avatar" aria-label="ZARA shadow assistant">
+        <ShadowAvatar state={isSpeaking ? 'speaking' : voiceListening ? 'listening' : busy ? 'thinking' : 'idle'} />
       </div>}
+      {setupRequired && window.zaraDesktop?.isDesktop && (
+        <div className="first-run-backdrop" role="dialog" aria-modal="true" aria-labelledby="first-run-title">
+          <section className="first-run-card">
+            <div className="first-run-mark"><ShadowAvatar compact /></div>
+            <p className="first-run-eyebrow">FIRST-TIME SETUP</p>
+            <h1 id="first-run-title">Welcome to ZARA</h1>
+            <p className="first-run-copy">Add your OmniRoute API key to connect ZARA's Primary Brain. Your key is encrypted in Windows secure storage and is never saved in SQLite.</p>
+            <label htmlFor="first-run-api-key">OmniRoute API Key</label>
+            <input id="first-run-api-key" type="password" autoComplete="new-password" spellCheck={false} maxLength={4096} value={setupKeyDraft} onChange={(event) => setSetupKeyDraft(event.target.value)} placeholder="Paste your OmniRoute API key" onKeyDown={(event) => { if (event.key === 'Enter') void completeFirstRunSetup(); }} />
+            {setupError && <p className="first-run-error" role="alert">{setupError}</p>}
+            {!secureKeyStorageAvailable && <p className="first-run-error" role="alert">Windows encrypted storage is not available. ZARA cannot safely save a key on this device.</p>}
+            <button className="first-run-submit" onClick={() => void completeFirstRunSetup()} disabled={!setupKeyDraft.trim() || setupBusy || !secureKeyStorageAvailable}>{setupBusy ? 'Securing and checking key…' : 'Secure Key & Continue'}</button>
+            <small>FreeLLMAPI can be added later as the automatic backup in Brain Settings. Never share your API key with anyone.</small>
+          </section>
+        </div>
+      )}
       {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X size={16} /></button></div>}
     </div>
   );
