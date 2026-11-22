@@ -1013,6 +1013,9 @@ export default function App() {
           <section className="coming-page"><div className="coming-icon"><Info /></div><h1>About ZARA</h1><p>ZARA is one bilingual assistant with one Brain Manager. OmniRoute is primary and FreeLLMAPI is the automatic backup. Provider credentials remain private on the backend.</p><button onClick={() => setTab('settings')}>Brain Settings <ArrowRight size={16} /></button></section>
         )}
       </main>
+      {tab !== 'home' && <div className="global-assistant-avatar" aria-label="ZARA 3D assistant">
+        <SketchfabAvatar />
+      </div>}
       {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X size={16} /></button></div>}
     </div>
   );
