@@ -122,3 +122,11 @@
 .talk-dock{z-index:4}
 @media(max-width:850px){.zara-3d-character iframe{min-height:500px}}
 @media(max-width:600px){.zara-3d-character iframe{min-height:450px}.zara-model-credit{bottom:82px;right:7px;font-size:8px}}
+
+
+/* Compact 3D assistant dock on every secondary page; dashboard keeps its large central character. */
+.global-assistant-avatar{position:fixed;z-index:8;right:18px;bottom:16px;width:clamp(150px,17vw,220px);height:clamp(190px,27vh,270px);overflow:hidden;border:1px solid rgba(82,142,255,.45);border-radius:18px;background:rgba(5,10,32,.82);box-shadow:0 0 24px rgba(37,103,255,.28)}
+.global-assistant-avatar .zara-3d-character{position:absolute;inset:0}
+.global-assistant-avatar .zara-3d-character iframe{width:100%;height:100%;min-height:0}
+.global-assistant-avatar .zara-model-credit{right:5px;bottom:5px;font-size:7px;padding:3px 5px}
+@media(max-width:700px){.global-assistant-avatar{right:8px;bottom:8px;width:112px;height:150px;border-radius:12px}}
