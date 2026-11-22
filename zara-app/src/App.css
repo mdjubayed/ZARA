@@ -109,24 +109,53 @@
 .web-browser-form>button:disabled{opacity:.4;cursor:not-allowed}
 
 
-/* Real interactive 3D character viewer in the central dashboard stage. */
-.zara-3d-character{position:absolute;inset:0;z-index:0;overflow:hidden;display:flex;align-items:stretch;justify-content:center;background:radial-gradient(ellipse at 50% 38%,rgba(42,73,201,.3),transparent 58%),linear-gradient(150deg,#101a49,#080d2b 55%,#07112c)}
-.zara-3d-character iframe{display:block;width:100%;height:100%;min-height:440px;border:0;background:transparent}
-.zara-model-credit{position:absolute;z-index:2;right:12px;bottom:106px;padding:5px 8px;border:1px solid rgba(100,145,255,.4);border-radius:8px;background:rgba(4,8,27,.78);color:#aebfff;font-size:9px;text-decoration:none}
-.zara-model-credit:hover{color:#fff;border-color:#65caff}
-.zara-3d-fallback{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;color:#dbe5ff;text-align:center}
-.zara-3d-fallback span{color:#9ba9d3;font-size:12px}
-.voice-autoplay-note{max-width:260px;margin:8px 0 0;color:#aebfff;font-size:10px;line-height:1.5}
-.hero-brand{z-index:2}
-.welcome-bubble{z-index:3}
-.talk-dock{z-index:4}
-@media(max-width:850px){.zara-3d-character iframe{min-height:500px}}
-@media(max-width:600px){.zara-3d-character iframe{min-height:450px}.zara-model-credit{bottom:82px;right:7px;font-size:8px}}
+/* Offline faceless human-shadow assistant: no remote model or external iframe. */
+.zara-shadow-avatar{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;isolation:isolate;background:radial-gradient(ellipse at 50% 48%,rgba(23,49,117,.42),transparent 48%),radial-gradient(ellipse at 50% 100%,rgba(83,48,183,.2),transparent 50%);pointer-events:none}
+.zara-shadow-avatar:before{content:"";position:absolute;width:54%;height:76%;top:11%;border-radius:50%;background:linear-gradient(180deg,rgba(38,79,177,.2),rgba(86,44,173,.08) 55%,transparent);filter:blur(36px);animation:shadow-breathe 5s ease-in-out infinite}
+.shadow-figure{position:relative;z-index:2;width:min(86%,560px);height:94%;max-height:650px;overflow:visible;filter:drop-shadow(0 0 22px rgba(65,123,255,.42));animation:shadow-float 5.8s ease-in-out infinite}
+.shadow-aura{position:absolute;z-index:1;width:44%;height:60%;top:19%;border-radius:50%;filter:blur(38px);opacity:.35;animation:shadow-aura 7s ease-in-out infinite alternate}
+.shadow-aura-one{background:#245bff;transform:translateX(-22%)}
+.shadow-aura-two{background:#8c35ff;transform:translateX(22%);animation-delay:-3.5s}
+.shadow-orbit{position:absolute;z-index:1;width:54%;height:25%;top:43%;border:1px solid rgba(102,170,255,.22);border-radius:50%;transform:rotate(-22deg);box-shadow:0 0 18px rgba(75,128,255,.15),inset 0 0 14px rgba(107,87,255,.1)}
+.orbit-two{width:61%;height:32%;transform:rotate(28deg);border-color:rgba(178,111,255,.16)}
+.shadow-particle{position:absolute;z-index:3;width:4px;height:4px;border-radius:50%;background:#b6f7ff;box-shadow:0 0 12px 3px rgba(80,177,255,.85);animation:shadow-particle-rise 5s linear infinite}
+.particle-one{left:26%;top:68%}.particle-two{left:74%;top:60%;animation-delay:-2s}.particle-three{left:64%;top:28%;animation-delay:-3.5s}
+.shadow-status{position:absolute;z-index:4;bottom:17%;left:50%;transform:translateX(-50%);padding:5px 12px;border:1px solid rgba(103,174,255,.25);border-radius:20px;background:rgba(5,10,32,.55);color:#9ecaff;font-size:9px;letter-spacing:3px;text-shadow:0 0 12px #4b8dff}
+.state-listening .shadow-figure{filter:drop-shadow(0 0 30px rgba(62,224,255,.7))}
+.state-thinking .shadow-figure{filter:drop-shadow(0 0 28px rgba(164,91,255,.65));animation:shadow-think 1.5s ease-in-out infinite}
+.state-speaking .shadow-figure{filter:drop-shadow(0 0 34px rgba(80,201,255,.8));animation:shadow-speak .42s ease-in-out infinite alternate}
+.is-compact{position:relative;inset:auto;width:100%;height:100%;min-height:0;background:transparent}
+.is-compact .shadow-figure{width:110%;height:112%}
+.is-compact .shadow-status{bottom:2%;font-size:6px;letter-spacing:1.5px;padding:3px 7px}
+.is-compact .shadow-orbit{width:78%;height:28%}
+.profile-avatar .zara-shadow-avatar{position:relative;inset:auto;width:100%;height:100%;background:transparent}
+.profile-avatar .shadow-status,.profile-avatar .shadow-orbit,.profile-avatar .shadow-particle{display:none}
+.hero-stage>.zara-shadow-avatar{z-index:1}
+.hero-stage .hero-glow{z-index:0}
+.global-assistant-avatar{position:fixed;z-index:8;right:18px;bottom:16px;width:clamp(150px,17vw,220px);height:clamp(190px,27vh,270px);overflow:hidden;border:1px solid rgba(82,142,255,.45);border-radius:18px;background:radial-gradient(ellipse at 50% 40%,rgba(25,49,116,.92),rgba(5,10,32,.96));box-shadow:0 0 24px rgba(37,103,255,.28),inset 0 0 25px rgba(100,80,255,.12)}
+.global-assistant-avatar .zara-shadow-avatar{position:absolute;inset:0}
+@media(max-width:700px){.global-assistant-avatar{right:8px;bottom:8px;width:108px;height:144px;border-radius:12px}.global-assistant-avatar .shadow-status{display:none}}
+@keyframes shadow-float{0%,100%{transform:translateY(5px) scale(1)}50%{transform:translateY(-9px) scale(1.012)}}
+@keyframes shadow-breathe{0%,100%{transform:scale(.92);opacity:.65}50%{transform:scale(1.08);opacity:1}}
+@keyframes shadow-aura{from{opacity:.18;filter:blur(30px)}to{opacity:.5;filter:blur(48px)}}
+@keyframes shadow-particle-rise{0%{opacity:0;transform:translateY(30px) scale(.5)}20%{opacity:1}100%{opacity:0;transform:translateY(-110px) scale(1.3)}}
+@keyframes shadow-speak{from{transform:translateY(-3px) scaleY(.99)}to{transform:translateY(2px) scaleY(1.015)}}
+@keyframes shadow-think{0%,100%{transform:translateY(0) rotate(-.4deg)}50%{transform:translateY(-5px) rotate(.4deg)}}
 
-
-/* Compact 3D assistant dock on every secondary page; dashboard keeps its large central character. */
-.global-assistant-avatar{position:fixed;z-index:8;right:18px;bottom:16px;width:clamp(150px,17vw,220px);height:clamp(190px,27vh,270px);overflow:hidden;border:1px solid rgba(82,142,255,.45);border-radius:18px;background:rgba(5,10,32,.82);box-shadow:0 0 24px rgba(37,103,255,.28)}
-.global-assistant-avatar .zara-3d-character{position:absolute;inset:0}
-.global-assistant-avatar .zara-3d-character iframe{width:100%;height:100%;min-height:0}
-.global-assistant-avatar .zara-model-credit{right:5px;bottom:5px;font-size:7px;padding:3px 5px}
-@media(max-width:700px){.global-assistant-avatar{right:8px;bottom:8px;width:112px;height:150px;border-radius:12px}}
+/* First-launch setup: collect the primary key only inside the installed desktop app. */
+.first-run-backdrop{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:20px;background:rgba(1,3,14,.86);backdrop-filter:blur(16px)}
+.first-run-card{width:min(100%,470px);display:flex;flex-direction:column;align-items:stretch;padding:30px;border:1px solid rgba(101,143,255,.55);border-radius:24px;background:radial-gradient(ellipse at 50% 0,rgba(67,63,190,.32),transparent 52%),linear-gradient(155deg,#101a46,#060b21);box-shadow:0 24px 90px rgba(0,0,0,.65),0 0 50px rgba(58,91,255,.18);color:#f4f6ff}
+.first-run-mark{width:96px;height:108px;align-self:center;position:relative;margin-bottom:6px}
+.first-run-mark .zara-shadow-avatar{position:absolute;inset:0}
+.first-run-mark .shadow-orbit,.first-run-mark .shadow-status,.first-run-mark .shadow-particle{display:none}
+.first-run-eyebrow{margin:0;text-align:center;color:#92b7ff;font-size:10px;font-weight:700;letter-spacing:3px}
+.first-run-card h1{margin:8px 0;text-align:center;font-size:27px}
+.first-run-copy{margin:0 0 20px;text-align:center;color:#aebcde;font-size:12px;line-height:1.7}
+.first-run-card label{margin-bottom:8px;color:#dce6ff;font-size:12px;font-weight:700}
+.first-run-card input{width:100%;padding:13px 14px;border:1px solid #5867b6;border-radius:11px;background:#070d29;color:#fff;font-size:13px;outline:none}
+.first-run-card input:focus{border-color:#77caff;box-shadow:0 0 0 3px rgba(91,164,255,.15)}
+.first-run-submit{margin-top:14px;padding:13px;border:1px solid #8275ff;border-radius:11px;background:linear-gradient(110deg,#6238dc,#1553b8);color:#fff;font-size:13px;font-weight:700}
+.first-run-submit:disabled{opacity:.45;cursor:not-allowed}
+.first-run-card>small{margin-top:14px;color:#8493bd;font-size:10px;line-height:1.6;text-align:center}
+.first-run-error{margin:9px 0 0;color:#ff9cae;font-size:11px;line-height:1.5}
+@media(max-width:600px){.first-run-card{padding:22px 18px;border-radius:18px}.first-run-card h1{font-size:23px}}
