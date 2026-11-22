@@ -6,7 +6,7 @@ import {
   ShieldCheck, Sparkles, Volume2, X, Zap,
 } from 'lucide-react';
 import heroImage from './assets/zara-hero.png';
-import HybridAvatar from './components/HybridAvatar.js';
+import SketchfabAvatar from './components/SketchfabAvatar.js';
 import './App.css';
 import { getApiBase } from './lib/apiBase.js';
 import { getNativeSpeechErrorMessage, isAndroidNativeSpeechAvailable, startNativeSpeech } from './lib/nativeSpeech.js';
@@ -272,6 +272,31 @@ export default function App() {
     }, 900);
     return () => window.clearTimeout(timer);
   }, [speakText, voiceLanguage]);
+
+
+  useEffect(() => {
+    if (voiceEnabled || !('speechSynthesis' in window)) return undefined;
+    const unlockOnFirstInteraction = () => {
+      if (voiceEnabled) return;
+      setVoiceEnabled(true);
+      try { localStorage.setItem('zara.voiceEnabled', 'true'); } catch { /* Storage may be unavailable. */ }
+      window.speechSynthesis.resume();
+      if (!greetingAttemptedRef.current) {
+        greetingAttemptedRef.current = true;
+        speakText(voiceLanguage === 'bn-BD'
+          ? 'হ্যালো! আমি জারা। কীভাবে সাহায্য করতে পারি?'
+          : 'Hello! I am ZARA. How can I help you today?');
+      }
+      window.removeEventListener('pointerdown', unlockOnFirstInteraction, true);
+      window.removeEventListener('keydown', unlockOnFirstInteraction, true);
+    };
+    window.addEventListener('pointerdown', unlockOnFirstInteraction, true);
+    window.addEventListener('keydown', unlockOnFirstInteraction, true);
+    return () => {
+      window.removeEventListener('pointerdown', unlockOnFirstInteraction, true);
+      window.removeEventListener('keydown', unlockOnFirstInteraction, true);
+    };
+  }, [voiceEnabled, speakText, voiceLanguage]);
 
   const sendMessage = useCallback(async (messageText?: string, speakResponse = false) => {
     const content = (messageText ?? input).trim();
@@ -844,7 +869,8 @@ export default function App() {
           <section className="dashboard-grid">
             <div className="hero-stage">
               <div className="hero-glow" />
-              <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?{(!voiceEnabled || speechError) && <button className="voice-enable-button" onClick={enableVoice}><Volume2 size={15} /> Enable Voice &amp; Hear Greeting</button>}</div>
+              <SketchfabAvatar />
+              <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?{speechError && !window.zaraDesktop?.isDesktop && <p className="voice-autoplay-note" role="status">{speechError} Tap anywhere once to start ZARA's voice.</p>}</div>
               <div className="hero-brand"><b>Z</b><strong>ZARA</strong><small>Dream · Assist · Achieve</small></div>
               <div className="talk-dock"><div className="wave-icon"><AudioLines size={27} /></div><span>Tap to Talk</span><button className="mic-main" onClick={() => setTab('voice')} aria-label="Open voice assistant"><Mic size={39} /></button><button onClick={() => setTab('chat')} aria-label="Open chat"><Keyboard /></button><button onClick={() => setTab('voice')} aria-label="Open voice assistant"><Play /></button><button onClick={() => setTab('settings')} aria-label="Open settings"><Settings /></button></div>
             </div>
@@ -901,7 +927,7 @@ export default function App() {
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, margin: '18px 0' }}>
               <input type="checkbox" checked={autoSpeak} onChange={(event) => setAutoSpeak(event.target.checked)} /> Speak ZARA's replies aloud
             </label>
-            {(!voiceEnabled || speechError) && <button onClick={enableVoice}><Volume2 size={17} /> Enable Voice &amp; Hear Greeting</button>}
+            {speechError && !window.zaraDesktop?.isDesktop && <p role="status">{speechError} Tap anywhere once to start ZARA's voice.</p>}
             <button onClick={voiceListening ? stopVoiceRecognition : startVoiceRecognition} disabled={busy}>{voiceListening ? 'Stop Listening' : 'Start Speaking'} <Mic size={17} /></button>
             {busy && <button onClick={() => activeChatController.current?.abort()}>Stop ZARA response <X size={17} /></button>}
             {voiceError && <p role="alert">{voiceError}</p>}
@@ -992,9 +1018,6 @@ export default function App() {
           <section className="coming-page"><div className="coming-icon"><Info /></div><h1>About ZARA</h1><p>ZARA is one bilingual assistant with one Brain Manager. OmniRoute is primary and FreeLLMAPI is the automatic backup. Provider credentials remain private on the backend.</p><button onClick={() => setTab('settings')}>Brain Settings <ArrowRight size={16} /></button></section>
         )}
       </main>
-      <div className="global-assistant-avatar" aria-label="ZARA assistant, available on every page">
-        <HybridAvatar status={isSpeaking ? 'speaking' : voiceListening ? 'listening' : busy ? 'thinking' : 'idle'} />
-      </div>
       {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X size={16} /></button></div>}
     </div>
   );
