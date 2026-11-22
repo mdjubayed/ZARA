@@ -845,7 +845,6 @@ export default function App() {
             <div className="hero-stage">
               <div className="hero-glow" />
               <div className="welcome-bubble"><strong>Hello! I'm ZARA <span>😊</span></strong><br /><em>How can I help</em> you today?{(!voiceEnabled || speechError) && <button className="voice-enable-button" onClick={enableVoice}><Volume2 size={15} /> Enable Voice &amp; Hear Greeting</button>}</div>
-              <HybridAvatar status={isSpeaking ? 'speaking' : voiceListening ? 'listening' : busy ? 'thinking' : 'idle'} />
               <div className="hero-brand"><b>Z</b><strong>ZARA</strong><small>Dream · Assist · Achieve</small></div>
               <div className="talk-dock"><div className="wave-icon"><AudioLines size={27} /></div><span>Tap to Talk</span><button className="mic-main" onClick={() => setTab('voice')} aria-label="Open voice assistant"><Mic size={39} /></button><button onClick={() => setTab('chat')} aria-label="Open chat"><Keyboard /></button><button onClick={() => setTab('voice')} aria-label="Open voice assistant"><Play /></button><button onClick={() => setTab('settings')} aria-label="Open settings"><Settings /></button></div>
             </div>
@@ -993,6 +992,9 @@ export default function App() {
           <section className="coming-page"><div className="coming-icon"><Info /></div><h1>About ZARA</h1><p>ZARA is one bilingual assistant with one Brain Manager. OmniRoute is primary and FreeLLMAPI is the automatic backup. Provider credentials remain private on the backend.</p><button onClick={() => setTab('settings')}>Brain Settings <ArrowRight size={16} /></button></section>
         )}
       </main>
+      <div className="global-assistant-avatar" aria-label="ZARA assistant, available on every page">
+        <HybridAvatar status={isSpeaking ? 'speaking' : voiceListening ? 'listening' : busy ? 'thinking' : 'idle'} />
+      </div>
       {toast && <div className="toast-message" role="status">{toast}<button onClick={() => setToast('')} aria-label="Dismiss"><X size={16} /></button></div>}
     </div>
   );
