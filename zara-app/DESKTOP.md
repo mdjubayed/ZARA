@@ -30,7 +30,7 @@ The NSIS installer is written to `release/`. The backend is bundled separately f
 
 ## GitHub Actions build
 
-Open the repository's Actions tab, choose **Build ZARA Windows Installer**, and run the workflow manually. The resulting installer is uploaded as a workflow artifact for 14 days.
+Open the repository's Actions tab, choose **Build ZARA Windows Installer**, and run the workflow manually. After a successful build, the workflow publishes a GitHub Release containing the Windows x64 `.exe` installer. The installer is then available from the repository's **Releases** page.
 
 ## Security model
 
@@ -43,7 +43,8 @@ Open the repository's Actions tab, choose **Build ZARA Windows Installer**, and 
 - Native file operations are limited to `.txt`, `.md`, `.json`, `.csv`, common source-code, markup, stylesheet, log, YAML, TOML, and SQL text formats; the app rejects binary/non-UTF-8 files and hidden or common secret/credential filenames.
 - External HTTP(S) links open in the system browser; the app window cannot navigate away from its local origin.
 - Provider keys remain blank by default and are not bundled into the installer.
-- In the packaged Windows app, users can enter keys in Brain Settings. Electron `safeStorage` encrypts them with the Windows DPAPI-backed provider before writing them to the user's application-data directory. The frontend receives only a saved/not-saved status, never the saved key.
+- On the first authenticated launch of the packaged Windows app, ZARA asks for the OmniRoute primary API key. Electron `safeStorage` encrypts it with the Windows DPAPI-backed provider before writing it to the user's application-data directory. The frontend receives only a saved/not-saved status, never the saved key.
+- FreeLLMAPI is optional during first launch and can be configured later as the automatic backup in Brain Settings. Both provider keys remain local to the Windows user profile and are never stored in SQLite.
 - The secure-key UI is intentionally unavailable in the browser and in the development Electron shell; those environments continue to use private backend environment variables.
 - Do not expose the desktop app's local API port to another device or network.
 
