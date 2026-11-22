@@ -11,7 +11,7 @@ import {
 export const messageRouter = Router({ mergeParams: true });
 
 const createMessageSchema = z.object({
-  role: z.enum(['user', 'assistant', 'system']),
+  role: z.literal('user'),
   content: z.string().trim().min(1).max(100000),
 });
 

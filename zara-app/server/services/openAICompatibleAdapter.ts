@@ -375,11 +375,26 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
         }
 
         if (payload.error) {
+          const providerCode = payload.error.code?.toLowerCase() ?? '';
+          const providerMessage = payload.error.message?.toLowerCase() ?? '';
+          const authenticationFailure =
+            /auth|unauthor|invalid[_ -]?api[_ -]?key|forbidden|permission/.test(
+              `${providerCode} ${providerMessage}`,
+            );
+          const rateLimitFailure =
+            /rate[_ -]?limit|too[_ -]?many[_ -]?requests|quota/.test(
+              `${providerCode} ${providerMessage}`,
+            );
+
           throw new ProviderRequestError(
             this.providerId,
-            'PROVIDER_STREAM_ERROR',
+            authenticationFailure
+              ? 'PROVIDER_AUTHENTICATION_FAILED'
+              : rateLimitFailure
+                ? 'PROVIDER_RATE_LIMITED'
+                : 'PROVIDER_STREAM_ERROR',
             undefined,
-            true,
+            !authenticationFailure,
           );
         }
 

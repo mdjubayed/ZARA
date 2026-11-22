@@ -1,0 +1,60 @@
+name: Build ZARA Windows Installer
+
+on:
+  push:
+    branches:
+      - phase2-blank-api-secure-config
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: zara-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: zara-app
+        run: npm install --no-audit --no-fund
+
+      - name: Run lint checks
+        working-directory: zara-app
+        run: npm run lint
+
+      - name: Run automated tests
+        working-directory: zara-app
+        run: npm test
+
+      - name: Package Windows installer
+        working-directory: zara-app
+        run: npm run desktop:dist
+
+      - name: Upload Windows installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZARA-AI-Windows-x64
+          path: zara-app/release/*.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish Windows installer to GitHub Releases
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $installer = Get-ChildItem -Path "zara-app/release" -Filter "*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced." }
+          $tag = "v0.1.${{ github.run_number }}"
+          gh release create $tag $installer.FullName --target ${{ github.sha }} --title "ZARA AI $tag" --notes "ZARA AI Windows x64 installer. Download the .exe asset and run it on Windows 10/11."

@@ -27,9 +27,15 @@ dist-ssr
 .env
 .env.*
 !.env.example
+!.env.mobile
+!.env.docker.example
 
 # Local database files
 data/*.sqlite
 data/*.sqlite-*
 data/*.db
 data/*.db-*
+
+# Native desktop build output
+dist-server
+release

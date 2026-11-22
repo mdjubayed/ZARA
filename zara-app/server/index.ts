@@ -5,8 +5,8 @@ import { closeDatabase } from './db/database';
 
 const server = createServer(app);
 
-server.listen(config.port, () => {
-  console.log(`ZARA API running on port ${config.port}`);
+server.listen(config.port, config.host, () => {
+  console.log(`ZARA API listening on ${config.host}:${config.port}`);
   console.log(`Environment: ${config.nodeEnv}`);
 });
 
