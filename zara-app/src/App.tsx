@@ -810,26 +810,13 @@ export default function App() {
       setProviderKeyStored((current) => ({ ...current, omniroute: true }));
       try {
         const result = await api<{ models: string[]; requiresModelSelection?: boolean }>('/providers/omniroute/verify', { method: 'POST' });
-        const availableModels = result.models ?? [];
-        setProviderModels((current) => ({ ...current, omniroute: availableModels }));
-        if (result.requiresModelSelection) {
-          const firstCompatibleModel = availableModels[0];
-          if (!firstCompatibleModel) throw new Error('PROVIDER_NO_MODELS_RETURNED');
-          await api('/settings/zara.provider.omniroute.model', {
-            method: 'PATCH',
-            body: JSON.stringify({ value: firstCompatibleModel }),
-          });
-          setProviderModelSelections((current) => ({ ...current, omniroute: firstCompatibleModel }));
-          await api('/providers/omniroute/verify', { method: 'POST' });
-        }
-        await api('/providers/omniroute/enabled', {
-          method: 'PATCH',
-          body: JSON.stringify({ enabled: true }),
-        });
+        setProviderModels((current) => ({ ...current, omniroute: result.models ?? [] }));
         await refreshProviders();
         setSetupRequired(false);
-        setTab('home');
-        setToast('OmniRoute is connected and enabled as ZARA Primary Brain. Add FreeLLMAPI later for automatic backup.');
+        setTab('settings');
+        setToast(result.requiresModelSelection
+          ? 'OmniRoute key saved securely. Select a compatible chat model in Brain Settings, then verify it.'
+          : 'OmniRoute key saved and verified. Enable it in Brain Settings to start chatting.');
       } catch (error) {
         await refreshProviders();
         setSetupRequired(false);
