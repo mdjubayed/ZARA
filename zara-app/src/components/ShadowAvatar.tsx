@@ -2,54 +2,47 @@ import { useId } from 'react';
 
 type ShadowState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-export default function ShadowAvatar({
-  state = 'idle',
-  compact = false,
-}: {
-  state?: ShadowState;
-  compact?: boolean;
-}) {
-  const instanceId = useId().replace(/:/g, '');
-  const coreId = `shadowCore-${instanceId}`;
-  const rimId = `shadowRim-${instanceId}`;
-  const glowId = `shadowGlow-${instanceId}`;
-  const blurId = `shadowBlur-${instanceId}`;
-
+export default function ShadowAvatar({ state = 'idle', compact = false }: { state?: ShadowState; compact?: boolean }) {
+  const id = useId().replace(/:/g, '');
   return (
-    <div className={`zara-shadow-avatar state-${state}${compact ? ' is-compact' : ''}`} role="img" aria-label={`ZARA faceless shadow assistant, ${state}`}>
+    <div className={`zara-shadow-avatar state-${state}${compact ? ' is-compact' : ''}`} role="img" aria-label={`ZARA luminous faceless hologram, ${state}`}>
       <div className="shadow-aura shadow-aura-one" />
       <div className="shadow-aura shadow-aura-two" />
-      <div className="shadow-orbit orbit-one" />
-      <div className="shadow-orbit orbit-two" />
-      <svg className="shadow-figure" viewBox="0 0 420 600" aria-hidden="true" focusable="false">
+      <svg className="shadow-figure" viewBox="0 0 520 620" aria-hidden="true" focusable="false">
         <defs>
-          <radialGradient id={coreId} cx="50%" cy="34%" r="68%">
-            <stop offset="0" stopColor="#11182e" />
-            <stop offset=".52" stopColor="#050817" />
-            <stop offset="1" stopColor="#01030a" />
-          </radialGradient>
-          <linearGradient id={rimId} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#b7f5ff" stopOpacity=".95" />
-            <stop offset=".35" stopColor="#5d8dff" stopOpacity=".85" />
-            <stop offset=".72" stopColor="#a05cff" stopOpacity=".8" />
-            <stop offset="1" stopColor="#36e7ff" stopOpacity=".45" />
+          <linearGradient id={`smoke-${id}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#c8ffff" stopOpacity=".12" />
+            <stop offset=".38" stopColor="#52efff" stopOpacity=".48" />
+            <stop offset=".72" stopColor="#087e91" stopOpacity=".23" />
+            <stop offset="1" stopColor="#d5ffff" stopOpacity=".08" />
           </linearGradient>
-          <filter id={glowId} x="-80%" y="-80%" width="260%" height="260%">
-            <feGaussianBlur stdDeviation="8" result="blur" />
-            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          <radialGradient id={`mist-${id}`}>
+            <stop offset="0" stopColor="#65f5ff" stopOpacity=".58" />
+            <stop offset="1" stopColor="#00a9bd" stopOpacity="0" />
+          </radialGradient>
+          <filter id={`soft-${id}`} x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="13" />
           </filter>
-          <filter id={blurId} x="-80%" y="-80%" width="260%" height="260%">
-            <feGaussianBlur stdDeviation="22" />
+          <filter id={`glow-${id}`} x="-80%" y="-80%" width="260%" height="260%">
+            <feGaussianBlur stdDeviation="5" result="b" />
+            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
-        <ellipse cx="210" cy="548" rx="112" ry="18" fill="#4c68ff" opacity=".28" filter={`url(#${blurId})`} />
-        <path d="M210 34 C146 34 116 89 120 150 C123 201 151 238 210 244 C269 238 297 201 300 150 C304 89 274 34 210 34Z" fill="#060916" stroke={`url(#${rimId})`} strokeWidth="2.2" filter={`url(#${glowId})`} />
-        <path d="M171 220 C178 246 176 260 158 275 C112 289 75 315 57 365 L29 489 C26 506 40 519 58 514 L105 502 L113 560 L307 560 L315 502 L362 514 C380 519 394 506 391 489 L363 365 C345 315 308 289 262 275 C244 260 242 246 249 220Z" fill={`url(#${coreId})`} stroke={`url(#${rimId})`} strokeWidth="2.5" filter={`url(#${glowId})`} />
-        <path d="M157 279 C180 300 240 300 263 279 C289 301 310 328 319 365 L340 479 C301 456 266 447 210 447 C154 447 119 456 80 479 L101 365 C110 328 131 301 157 279Z" fill="#020511" opacity=".9" />
-        <path d="M210 250 L210 445" stroke={`url(#${rimId})`} strokeWidth="1.6" opacity=".5" filter={`url(#${glowId})`} />
-        <path d="M120 352 C151 329 174 324 210 324 C246 324 269 329 300 352" fill="none" stroke="#80a7ff" strokeOpacity=".45" strokeWidth="2" filter={`url(#${glowId})`} />
-        <path d="M61 470 C112 444 154 435 210 435 C266 435 308 444 359 470" fill="none" stroke="#9b73ff" strokeOpacity=".48" strokeWidth="2" />
-        <path d="M151 84 C163 50 185 38 210 38 C235 38 257 50 269 84" fill="none" stroke="#b9f8ff" strokeOpacity=".7" strokeWidth="2" filter={`url(#${glowId})`} />
+        <ellipse cx="270" cy="310" rx="190" ry="245" fill={`url(#mist-${id})`} filter={`url(#soft-${id})`} />
+        <g fill="none" stroke={`url(#smoke-${id})`} strokeLinecap="round" filter={`url(#glow-${id})`}>
+          <path strokeWidth="30" d="M180 540 C110 474 112 400 150 337 C184 281 172 214 209 139 C239 78 322 61 369 112 C419 169 391 238 374 285 C359 331 407 354 432 408 C456 461 427 510 390 550" />
+          <path strokeWidth="17" d="M151 500 C91 438 145 382 191 344 C232 310 215 264 240 211 C267 155 329 139 356 183 C387 234 335 285 355 331 C375 375 430 402 440 455" />
+          <path strokeWidth="12" d="M123 414 C183 394 190 341 206 297 C221 253 213 202 257 157 C292 120 343 126 365 160" />
+          <path strokeWidth="24" d="M104 510 C173 469 224 482 270 453 C320 421 349 381 403 384 C449 387 468 426 453 465" />
+          <path strokeWidth="11" d="M80 455 C150 427 174 448 221 426 C275 401 298 360 353 348" />
+          <path strokeWidth="8" d="M170 570 C230 530 276 548 330 520 C380 494 405 467 461 482" />
+          <path strokeWidth="7" d="M202 93 C244 35 328 35 378 92" />
+        </g>
+        <g fill="none" stroke="#9effff" strokeLinecap="round" filter={`url(#glow-${id})`} opacity=".72">
+          <path strokeWidth="4" d="M176 268 C208 209 214 151 269 113 C308 86 351 102 367 130" />
+          <path strokeWidth="3" d="M135 433 C197 405 204 355 224 310" />
+          <path strokeWidth="3" d="M256 492 C315 474 355 420 415 417" />
+        </g>
       </svg>
       <span className="shadow-particle particle-one" />
       <span className="shadow-particle particle-two" />
