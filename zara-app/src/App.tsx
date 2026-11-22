@@ -897,7 +897,7 @@ export default function App() {
         <header className="topbar">
           <div className="mobile-brand">ZARA <span>{pageTitle}</span></div>
           <div className={`online-pill ${online ? 'is-online' : 'is-offline'}`}><i />{online ? 'Online' : 'Offline'}<ChevronDown size={15} /></div>
-          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => { if (autoSpeak) { setAutoSpeak(false); stopSpeaking(); } else { setAutoSpeak(true); if (!voiceEnabled) enableVoice(); } }} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
+          <div className="top-actions"><button aria-label="Voice" onClick={() => setTab('voice')}><Mic /></button><button aria-label="Sound" onClick={() => { if (autoSpeak) { setAutoSpeak(false); stopSpeaking(); } else { setAutoSpeak(true); setVoiceEnabled(true); try { localStorage.setItem('zara.voiceEnabled', 'true'); } catch { /* Storage may be unavailable. */ } window.speechSynthesis?.resume(); if (!greetingAttemptedRef.current) { greetingAttemptedRef.current = true; speakText(voiceLanguage === 'bn-BD' ? 'হ্যালো! আমি জারা। কীভাবে সাহায্য করতে পারি?' : 'Hello! I am ZARA. How can I help you today?'); } } }} title={autoSpeak ? "Mute spoken replies" : "Enable spoken replies"}><Volume2 /></button><button aria-label="Language" onClick={() => setVoiceLanguage((value) => value === "bn-BD" ? "en-US" : "bn-BD")}><Globe /></button><span className="window-dots">—　□　×</span></div>
         </header>
 
         {tab === 'home' && (
