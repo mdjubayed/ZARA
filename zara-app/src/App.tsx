@@ -260,42 +260,29 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   }, [voiceLanguage]);
 
+  // Browsers block speech until a user gesture. Greet on the first tap/key
+  // instead of attempting autoplay and marking the greeting as already played.
   useEffect(() => {
-    if (greetingAttemptedRef.current) return undefined;
-    const timer = window.setTimeout(() => {
+    if (!('speechSynthesis' in window)) return undefined;
+    const greetAfterUserGesture = () => {
       if (greetingAttemptedRef.current) return;
       greetingAttemptedRef.current = true;
-      speakText(voiceLanguage === 'bn-BD'
-        ? 'হ্যালো! আমি জারা। আবারও স্বাগতম। কীভাবে সাহায্য করতে পারি?'
-        : 'Hello! I am ZARA. Welcome back. How can I help you today?');
-    }, 900);
-    return () => window.clearTimeout(timer);
-  }, [speakText, voiceLanguage]);
-
-
-  useEffect(() => {
-    if (voiceEnabled || !('speechSynthesis' in window)) return undefined;
-    const unlockOnFirstInteraction = () => {
-      if (voiceEnabled) return;
       setVoiceEnabled(true);
       try { localStorage.setItem('zara.voiceEnabled', 'true'); } catch { /* Storage may be unavailable. */ }
       window.speechSynthesis.resume();
-      if (!greetingAttemptedRef.current) {
-        greetingAttemptedRef.current = true;
-        speakText(voiceLanguage === 'bn-BD'
-          ? 'হ্যালো! আমি জারা। কীভাবে সাহায্য করতে পারি?'
-          : 'Hello! I am ZARA. How can I help you today?');
-      }
-      window.removeEventListener('pointerdown', unlockOnFirstInteraction, true);
-      window.removeEventListener('keydown', unlockOnFirstInteraction, true);
+      speakText(voiceLanguage === 'bn-BD'
+        ? 'হ্যালো! আমি জারা। আবারও স্বাগতম। কীভাবে সাহায্য করতে পারি?'
+        : 'Hello! I am ZARA. Welcome back. How can I help you today?');
+      window.removeEventListener('pointerdown', greetAfterUserGesture, true);
+      window.removeEventListener('keydown', greetAfterUserGesture, true);
     };
-    window.addEventListener('pointerdown', unlockOnFirstInteraction, true);
-    window.addEventListener('keydown', unlockOnFirstInteraction, true);
+    window.addEventListener('pointerdown', greetAfterUserGesture, true);
+    window.addEventListener('keydown', greetAfterUserGesture, true);
     return () => {
-      window.removeEventListener('pointerdown', unlockOnFirstInteraction, true);
-      window.removeEventListener('keydown', unlockOnFirstInteraction, true);
+      window.removeEventListener('pointerdown', greetAfterUserGesture, true);
+      window.removeEventListener('keydown', greetAfterUserGesture, true);
     };
-  }, [voiceEnabled, speakText, voiceLanguage]);
+  }, [speakText, voiceLanguage]);
 
   const sendMessage = useCallback(async (messageText?: string, speakResponse = false) => {
     const content = (messageText ?? input).trim();
