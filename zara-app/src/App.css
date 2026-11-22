@@ -110,20 +110,18 @@
 
 
 /* Offline faceless human-shadow assistant: no remote model or external iframe. */
-.zara-shadow-avatar{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;isolation:isolate;background:radial-gradient(ellipse at 50% 48%,rgba(23,49,117,.42),transparent 48%),radial-gradient(ellipse at 50% 100%,rgba(83,48,183,.2),transparent 50%);pointer-events:none}
-.zara-shadow-avatar:before{content:"";position:absolute;width:54%;height:76%;top:11%;border-radius:50%;background:linear-gradient(180deg,rgba(38,79,177,.2),rgba(86,44,173,.08) 55%,transparent);filter:blur(36px);animation:shadow-breathe 5s ease-in-out infinite}
-.shadow-figure{position:relative;z-index:2;width:min(86%,560px);height:94%;max-height:650px;overflow:visible;filter:drop-shadow(0 0 22px rgba(65,123,255,.42));animation:shadow-float 5.8s ease-in-out infinite}
-.shadow-aura{position:absolute;z-index:1;width:44%;height:60%;top:19%;border-radius:50%;filter:blur(38px);opacity:.35;animation:shadow-aura 7s ease-in-out infinite alternate}
-.shadow-aura-one{background:#245bff;transform:translateX(-22%)}
-.shadow-aura-two{background:#8c35ff;transform:translateX(22%);animation-delay:-3.5s}
-.shadow-orbit{position:absolute;z-index:1;width:54%;height:25%;top:43%;border:1px solid rgba(102,170,255,.22);border-radius:50%;transform:rotate(-22deg);box-shadow:0 0 18px rgba(75,128,255,.15),inset 0 0 14px rgba(107,87,255,.1)}
-.orbit-two{width:61%;height:32%;transform:rotate(28deg);border-color:rgba(178,111,255,.16)}
-.shadow-particle{position:absolute;z-index:3;width:4px;height:4px;border-radius:50%;background:#b6f7ff;box-shadow:0 0 12px 3px rgba(80,177,255,.85);animation:shadow-particle-rise 5s linear infinite}
+.zara-shadow-avatar{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;overflow:hidden;isolation:isolate;background:radial-gradient(ellipse at 52% 48%,rgba(0,111,126,.28),transparent 43%),radial-gradient(ellipse at 50% 100%,rgba(0,67,78,.2),transparent 55%);pointer-events:none}
+.zara-shadow-avatar:before{content:"";position:absolute;width:62%;height:82%;top:8%;border-radius:50%;background:radial-gradient(ellipse,rgba(34,224,237,.25),rgba(0,103,119,.1) 48%,transparent 72%);filter:blur(42px);animation:shadow-breathe 5s ease-in-out infinite}
+.shadow-figure{position:relative;z-index:2;width:min(96%,620px);height:98%;max-height:690px;overflow:visible;filter:drop-shadow(0 0 20px rgba(36,226,239,.42));animation:shadow-float 5.8s ease-in-out infinite}
+.shadow-aura{position:absolute;z-index:1;width:52%;height:66%;top:16%;border-radius:50%;filter:blur(46px);opacity:.34;animation:shadow-aura 7s ease-in-out infinite alternate}
+.shadow-aura-one{background:#00aebd;transform:translateX(-20%)}
+.shadow-aura-two{background:#38e8e8;transform:translateX(20%);animation-delay:-3.5s}
+.shadow-particle{position:absolute;z-index:3;width:4px;height:4px;border-radius:50%;background:#bfffff;box-shadow:0 0 14px 4px rgba(71,239,245,.75);animation:shadow-particle-rise 5s linear infinite}
 .particle-one{left:26%;top:68%}.particle-two{left:74%;top:60%;animation-delay:-2s}.particle-three{left:64%;top:28%;animation-delay:-3.5s}
 .shadow-status{position:absolute;z-index:4;bottom:17%;left:50%;transform:translateX(-50%);padding:5px 12px;border:1px solid rgba(103,174,255,.25);border-radius:20px;background:rgba(5,10,32,.55);color:#9ecaff;font-size:9px;letter-spacing:3px;text-shadow:0 0 12px #4b8dff}
-.state-listening .shadow-figure{filter:drop-shadow(0 0 30px rgba(62,224,255,.7))}
-.state-thinking .shadow-figure{filter:drop-shadow(0 0 28px rgba(164,91,255,.65));animation:shadow-think 1.5s ease-in-out infinite}
-.state-speaking .shadow-figure{filter:drop-shadow(0 0 34px rgba(80,201,255,.8));animation:shadow-speak .42s ease-in-out infinite alternate}
+.state-listening .shadow-figure{filter:drop-shadow(0 0 34px rgba(62,244,255,.78))}
+.state-thinking .shadow-figure{filter:drop-shadow(0 0 32px rgba(66,226,238,.72));animation:shadow-think 1.5s ease-in-out infinite}
+.state-speaking .shadow-figure{filter:drop-shadow(0 0 38px rgba(74,242,249,.86));animation:shadow-speak .42s ease-in-out infinite alternate}
 .is-compact{position:relative;inset:auto;width:100%;height:100%;min-height:0;background:transparent}
 .is-compact .shadow-figure{width:110%;height:112%}
 .is-compact .shadow-status{bottom:2%;font-size:6px;letter-spacing:1.5px;padding:3px 7px}
