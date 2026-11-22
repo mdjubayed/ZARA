@@ -151,7 +151,7 @@ export default function App() {
       if (!active) return;
       setSecureKeyStorageAvailable(status.available);
       setProviderKeyStored({ omniroute: status.omniroute, freellmapi: status.freellmapi });
-      setSetupRequired(!status.omniroute);
+      setSetupRequired(status.available && !status.omniroute);
     }).catch(() => {
       if (active) setSecureKeyStorageAvailable(false);
     });
