@@ -256,14 +256,6 @@ export default function App() {
     window.speechSynthesis.speak(utterance);
   }, [voiceLanguage]);
 
-  const enableVoice = useCallback(() => {
-    setVoiceEnabled(true);
-    try { localStorage.setItem('zara.voiceEnabled', 'true'); } catch { /* Storage may be unavailable in private browsing. */ }
-    speakText(voiceLanguage === 'bn-BD'
-      ? 'হ্যালো! আমি জারা। আমি এখন কথা বলতে প্রস্তুত। কীভাবে সাহায্য করতে পারি?'
-      : 'Hello! I am ZARA. I am ready to talk. How can I help you today?');
-  }, [speakText, voiceLanguage]);
-
   useEffect(() => {
     if (greetingAttemptedRef.current) return undefined;
     const timer = window.setTimeout(() => {
