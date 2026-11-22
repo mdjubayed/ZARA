@@ -129,3 +129,20 @@
 @keyframes zara-avatar-aura{50%{opacity:.65;transform:scale(1.08)}}
 @keyframes zara-avatar-pulse{to{opacity:.35;transform:scale(.75)}}
 @media(max-width:600px){.hybrid-avatar{width:100%;height:83%;bottom:43px;min-height:350px}.hybrid-avatar-ring{width:75%}.voice-enable-button{font-size:10px;padding:6px 8px}}
+
+
+/* Persistent assistant: visible on every ZARA page without changing page layouts. */
+.global-assistant-avatar{position:fixed;z-index:45;right:22px;bottom:18px;width:clamp(150px,18vw,230px);height:clamp(190px,26vh,270px);pointer-events:none}
+.global-assistant-avatar .hybrid-avatar{position:absolute;inset:0;left:0;bottom:0;transform:none;width:100%;height:100%;min-height:0}
+.global-assistant-avatar .hybrid-avatar canvas{width:100%;height:100%}
+.global-assistant-avatar .hybrid-avatar-ring{width:72%}
+.global-assistant-avatar .hybrid-avatar-aura{inset:18% 8% 14%}
+.global-assistant-avatar .hybrid-avatar-state{bottom:0;font-size:8px;padding:5px 9px;letter-spacing:1.4px}
+@media(max-width:700px){
+  .global-assistant-avatar{right:8px;bottom:12px;width:116px;height:156px}
+  .global-assistant-avatar .hybrid-avatar-ring{width:78%}
+  .global-assistant-avatar .hybrid-avatar-state{font-size:7px;padding:4px 7px}
+}
+@media(max-width:380px){
+  .global-assistant-avatar{right:4px;bottom:8px;width:94px;height:132px}
+}
