@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const MODEL_URL = 'https://sketchfab.com/models/e16bf07a62e54b8ea99ca2653675bb41/embed?autostart=1&ui_infos=0&ui_controls=1&ui_theme=dark&dnt=1';
+const MODEL_URL = 'https://sketchfab.com/models/e16bf07a62e54b8ea99ca2653675bb41/embed?autostart=1&ui_infos=0&ui_controls=1&ui_theme=dark&dnt=1&transparent=1';
 
 export default function SketchfabAvatar() {
   const [failed, setFailed] = useState(false);
